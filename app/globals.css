@@ -1,26 +1,60 @@
 @import "tailwindcss";
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --forest: #003d29;
+  --deep-green: #347355;
+  --mint: #6bbf8c;
+  --pale-green: #c9fdd7;
+  --off-white: #f0fff4;
+  --ink: #092c20;
+  --muted: #587366;
+  --panel: #e8efea;
+  --line: rgba(0, 61, 41, 0.16);
+  --shadow: 0 24px 60px rgba(0, 61, 41, 0.12);
 }
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+@theme {
+  --color-forest: #003d29;
+  --color-deep-green: #347355;
+  --color-mint: #6bbf8c;
+  --color-pale-green: #c9fdd7;
+  --color-off-white: #f0fff4;
+  --color-ink: #092c20;
+  --color-muted: #587366;
+  --color-panel: #e8efea;
+  --color-line: rgba(0, 61, 41, 0.16);
+  --font-mono: var(--font-jetbrains-mono), "JetBrains Mono", monospace;
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background-color: var(--off-white);
+  color: var(--ink);
+  font-family: var(--font-jetbrains-mono), "JetBrains Mono", monospace;
+}
+
+/* Custom styles for ticket cutout effect in summary token */
+.ticket-notch::before {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: -12px;
+  transform: translateY(-50%);
+  width: 24px;
+  height: 24px;
+  background-color: var(--off-white);
+  border-radius: 50%;
+  z-index: 10;
+}
+
+.ticket-notch::after {
+  content: "";
+  position: absolute;
+  top: 50%;
+  right: -12px;
+  transform: translateY(-50%);
+  width: 24px;
+  height: 24px;
+  background-color: var(--off-white);
+  border-radius: 50%;
+  z-index: 10;
 }
