@@ -26,7 +26,7 @@ export const Login: React.FC<LoginProps> = ({
 }) => {
   const [method, setMethod] = useState<"abha" | "mobile">(defaultMethod);
   const [inputValue, setInputValue] = useState(
-    defaultIdentifier ?? (defaultMethod === "abha" ? "14-1234-5678-4821" : "9876543210")
+    defaultIdentifier ?? (defaultMethod === "abha" ? "12-3456-7890-1234" : "9876543210")
   );
   const [language, setLanguage] = useState("en");
   const [status, setStatus] = useState<string>("");
@@ -34,7 +34,7 @@ export const Login: React.FC<LoginProps> = ({
 
   const handleMethodChange = (newMethod: "abha" | "mobile") => {
     setMethod(newMethod);
-    setInputValue(newMethod === "abha" ? "14-1234-5678-4821" : "9876543210");
+    setInputValue(newMethod === "abha" ? "12-3456-7890-1234" : "9876543210");
     setStatus("");
   };
 
@@ -269,6 +269,23 @@ export const Login: React.FC<LoginProps> = ({
                 >
                   <ArrowRight className="w-4 h-4 stroke-[2.2]" />
                 </span>
+              </button>
+
+              {/* 1-Click Demo Button */}
+              <button
+                type="button"
+                onClick={() => {
+                  setMethod("mobile");
+                  setInputValue("9876543210");
+                  setStatus("Demo credentials verified! Loading Shriram Vaidya's profile...");
+                  setStatusType("success");
+                  if (onSuccess) {
+                    setTimeout(() => onSuccess({ method: "mobile", identifier: "9876543210" }), 400);
+                  }
+                }}
+                className="w-full mt-2.5 py-2.5 px-3 bg-[#c9fdd7] hover:bg-[#b5f8c6] text-[#003d29] border border-[#003d29]/20 rounded-[10px] text-[11px] font-bold transition-all cursor-pointer flex items-center justify-center gap-2"
+              >
+                <span>⚡ 1-Click Demo: Sign in as Shriram Vaidya</span>
               </button>
 
               {/* Status Message */}

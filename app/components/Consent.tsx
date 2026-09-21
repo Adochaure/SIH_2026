@@ -26,7 +26,7 @@ export const Consent: React.FC<ConsentProps> = ({
   onBack,
   onConsent,
   step = "Step 1 of 3",
-  patientName = "Priya Sharma",
+  patientName = "Shriram Vaidya",
 }) => {
   const [isPlayingAudio, setIsPlayingAudio] = useState(false);
   const [hasConsented, setHasConsented] = useState(false);

@@ -188,6 +188,22 @@ export const DoctorLogin: React.FC<DoctorLoginProps> = ({
                 </span>
               </button>
 
+              {/* 1-Click Doctor Demo Button */}
+              <button
+                type="button"
+                onClick={() => {
+                  setPhone("9876500001");
+                  setStatus("Verified Dr. Ananya Kulkarni (DemoCare Hospital). Opening workstation...");
+                  setStatusType("success");
+                  if (onSuccess) {
+                    setTimeout(() => onSuccess({ mobile: "9876500001" }), 400);
+                  }
+                }}
+                className="w-full mt-2.5 py-2.5 px-3 bg-[#c9fdd7] hover:bg-[#b5f8c6] text-[#003d29] border border-[#003d29]/20 rounded-[10px] text-[11px] font-bold transition-all cursor-pointer flex items-center justify-center gap-2"
+              >
+                <span>⚡ 1-Click Demo: Sign in as Dr. Ananya Kulkarni</span>
+              </button>
+
               {/* Status Message */}
               {status && (
                 <p

@@ -6,6 +6,7 @@ import { ArrowLeft, CheckCircle2, Clock } from "lucide-react";
 import { Navbar } from "./Navbar";
 
 export interface SummaryTokenProps {
+  patientName?: string;
   tokenNumber?: string;
   queuePosition?: number | string;
   estimatedWaitMinutes?: number;
@@ -13,9 +14,10 @@ export interface SummaryTokenProps {
 }
 
 export const SummaryToken: React.FC<SummaryTokenProps> = ({
-  tokenNumber = "C-214",
-  queuePosition = 3,
-  estimatedWaitMinutes = 12,
+  patientName = "Shriram Vaidya",
+  tokenNumber = "A-104",
+  queuePosition = 1,
+  estimatedWaitMinutes = 8,
   onReturnToDashboard,
 }) => {
   return (
@@ -23,7 +25,7 @@ export const SummaryToken: React.FC<SummaryTokenProps> = ({
       {/* Top Navigation Bar with Profile Icon */}
       <Navbar
         isLoggedIn={true}
-        patientName="Priya Sharma"
+        patientName={patientName}
         onProfileClick={onReturnToDashboard}
       />
 

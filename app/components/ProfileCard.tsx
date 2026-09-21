@@ -25,11 +25,11 @@ export interface ProfileCardProps {
 }
 
 export const ProfileCard: React.FC<ProfileCardProps> = ({
-  patientName = "Tatya Vinchu",
-  age = 78,
+  patientName = "Shriram Vaidya",
+  age = 29,
   gender = "Male",
-  abhaId = "14-1234-5678-4821",
-  abhaAddress = "tayta@abdm",
+  abhaId = "12-3456-7890-1234",
+  abhaAddress = "shriram.vaidya@abdm",
   isVerified = true,
   avatarUrl = "/assets/login.png",
   onConfirm,
