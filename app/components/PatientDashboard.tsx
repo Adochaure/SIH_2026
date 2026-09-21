@@ -1,22 +1,16 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
+import Image from "next/image";
 import {
-  ScanLine,
   QrCode,
-  ArrowRight,
-  FileText,
-  X,
-  Camera,
   Clock,
   PlusCircle,
   Users,
-  Activity,
-  Calendar,
-  ShieldCheck,
+  Camera,
   Check,
-  Upload,
-  HeartPulse,
+  X,
+  FileText,
   AlertCircle,
   LayoutDashboard,
   Plus,
@@ -27,11 +21,27 @@ import {
   CheckCircle2,
   Loader2,
   Sparkles,
+  ShieldCheck,
+  HeartPulse,
+  ScanLine,
+  UserPlus,
+  Send,
+  Video,
+  Upload,
 } from "lucide-react";
 import { Navbar } from "./Navbar";
-import { demoStore, TimelineRecord as StoreTimelineRecord, AttachedDocument, ConsultationRecord } from "../lib/demoStore";
+import {
+  demoStore,
+  TimelineRecord as StoreTimelineRecord,
+  AttachedDocument,
+  ConsultationRecord,
+  DoctorProfile,
+  KNOWN_DOCTORS,
+} from "../lib/demoStore";
 import { runOcrOnFile, SAMPLE_DOCUMENTS } from "../lib/ocrService";
 import { CaseIntake } from "./CaseIntake";
+import { useLanguage } from "../lib/languageContext";
+import jsQR from "jsqr";
 
 export interface PatientDashboardProps {
   patientName?: string;
@@ -42,6 +52,7 @@ export interface PatientDashboardProps {
   onScanClick?: () => void;
   onViewSummaryClick?: () => void;
   onProfileClick?: () => void;
+  onLogout?: () => void;
 }
 
 interface TimelineRecord {
@@ -60,7 +71,7 @@ interface TimelineRecord {
 interface FamilyMember {
   id: string;
   name: string;
-  relation: string;
+  relation: "Father" | "Mother" | "Spouse" | "Brother" | "Sister" | "Son" | "Daughter" | string;
   age: number;
   abhaId: string;
   conditions: string[];
@@ -77,7 +88,10 @@ export const PatientDashboard: React.FC<PatientDashboardProps> = ({
   onScanClick,
   onViewSummaryClick,
   onProfileClick,
+  onLogout,
 }) => {
+  const { t, language } = useLanguage();
+
   // Navigation tabs: overview, timeline, scanner, add-history, family-tree
   const [activeTab, setActiveTab] = useState<
     "overview" | "timeline" | "scanner" | "add-history" | "family-tree"
@@ -90,7 +104,9 @@ export const PatientDashboard: React.FC<PatientDashboardProps> = ({
 
   // Sync with DemoStore
   const [patientData, setPatientData] = useState(() => demoStore.getPatient());
-  const [consultations, setConsultations] = useState<ConsultationRecord[]>(() => demoStore.getConsultations());
+  const [consultations, setConsultations] = useState<ConsultationRecord[]>(() =>
+    demoStore.getConsultations()
+  );
 
   useEffect(() => {
     const unsubscribe = demoStore.subscribe(() => {
@@ -104,76 +120,376 @@ export const PatientDashboard: React.FC<PatientDashboardProps> = ({
   const tokenNumber = latestConsultation?.tokenNumber || propTokenNumber || "A-104";
   const queuePosition = latestConsultation?.queuePosition || propQueuePosition || 1;
 
-  // Health Timeline State initialized from demoStore
+  // Health Timeline State
   const timelineRecords: TimelineRecord[] = patientData.timeline as TimelineRecord[];
 
-  // OCR state for Scanner Tab
+  // OCR state for Timeline & Add History
   const [ocrLoading, setOcrLoading] = useState(false);
   const [ocrProgress, setOcrProgress] = useState({ progress: 0, status: "" });
-  const [scannedResult, setScannedResult] = useState<any>(null);
-  const [scannerSuccessMsg, setScannerSuccessMsg] = useState("");
-
   const [timelineFilter, setTimelineFilter] = useState<
     "all" | "consultation" | "lab" | "medication"
   >("all");
 
-  // Family Tree State
+  // Family Tree State (Corrected for Shriram Vaidya)
   const [familyMembers, setFamilyMembers] = useState<FamilyMember[]>([
     {
       id: "fam-1",
-      name: "Ramesh Sharma",
+      name: "Ramesh Vaidya",
       relation: "Father",
-      age: 58,
-      abhaId: "14-8832-1920-4412",
+      age: 60,
+      abhaId: "12-8832-1920-4412",
       conditions: ["Hypertension", "Type 2 Diabetes"],
       bloodGroup: "B+",
       linked: true,
     },
     {
       id: "fam-2",
-      name: "Sunita Sharma",
+      name: "Sunita Vaidya",
       relation: "Mother",
-      age: 54,
-      abhaId: "14-7741-9923-1109",
-      conditions: ["Asthma", "Mild Thyroid"],
+      age: 56,
+      abhaId: "12-7741-9923-1109",
+      conditions: ["Mild Acidity", "Thyroid Normal"],
       bloodGroup: "O+",
       linked: true,
     },
     {
       id: "fam-3",
-      name: "Aarav Sharma",
+      name: "Ananya Vaidya",
+      relation: "Spouse",
+      age: 27,
+      abhaId: "12-9988-7766-5544",
+      conditions: ["None noted", "Healthy vitals"],
+      bloodGroup: "A+",
+      linked: true,
+    },
+    {
+      id: "fam-4",
+      name: "Aarav Vaidya",
       relation: "Son",
-      age: 4,
-      abhaId: "14-5512-3344-9988",
-      conditions: ["No known allergies", "Vaccinations up to date"],
+      age: 3,
+      abhaId: "12-5512-3344-9988",
+      conditions: ["Vaccinations up to date"],
       bloodGroup: "B+",
       linked: true,
     },
   ]);
 
+  // Add Family Member Modal State with ABDM Consent
+  const [isAddMemberModalOpen, setIsAddMemberModalOpen] = useState(false);
+  const [newMemberName, setNewMemberName] = useState("");
+  const [newMemberRelation, setNewMemberRelation] = useState("Father");
+  const [newMemberAbha, setNewMemberAbha] = useState("");
+  const [newMemberAge, setNewMemberAge] = useState(30);
+  const [newMemberBlood, setNewMemberBlood] = useState("B+");
+  const [newMemberConditions, setNewMemberConditions] = useState("None");
+  const [consentState, setConsentState] = useState<"form" | "sending" | "request_sent" | "accepted">("form");
+  const [memberSuccessMsg, setMemberSuccessMsg] = useState("");
+
   // Form State for Add Medical History
   const [newTitle, setNewTitle] = useState("");
-  const [newType, setNewType] = useState<"consultation" | "lab" | "medication" | "allergy">("consultation");
+  const [newType, setNewType] = useState<"consultation" | "lab" | "medication" | "allergy">(
+    "consultation"
+  );
   const [newDoctor, setNewDoctor] = useState("");
   const [newFacility, setNewFacility] = useState("");
-  const [newDate, setNewDate] = useState("2026-09-16");
+  const [newDate, setNewDate] = useState("2026-09-21");
   const [newNotes, setNewNotes] = useState("");
   const [uploadedFileName, setUploadedFileName] = useState("");
   const [addSuccessMessage, setAddSuccessMessage] = useState("");
+  const [attachedDoc, setAttachedDoc] = useState<AttachedDocument | null>(null);
+  const [ocrAutoDetectedMsg, setOcrAutoDetectedMsg] = useState("");
+  const [activeDocPreview, setActiveDocPreview] = useState<AttachedDocument | null>(null);
+  const historyFileInputRef = useRef<HTMLInputElement>(null);
 
+  // Doctor QR scan & assignment state
+  const [scannedDoctor, setScannedDoctor] = useState<DoctorProfile | null>(null);
+  const [selectedDoctorForNewCase, setSelectedDoctorForNewCase] = useState<DoctorProfile | null>(
+    null
+  );
+  const [qrCodeInput, setQrCodeInput] = useState("");
+  const [qrScanStatusMsg, setQrScanStatusMsg] = useState("");
+  const [isCameraActive, setIsCameraActive] = useState(false);
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const scanCanvasRef = useRef<HTMLCanvasElement | null>(null);
+  const scanFrameIdRef = useRef<number | null>(null);
+
+  // Audio confirmation beep on QR detection
+  const playSuccessBeep = () => {
+    try {
+      const AudioContextClass =
+        window.AudioContext ||
+        (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
+      if (!AudioContextClass) return;
+      const audioCtx = new AudioContextClass();
+      const osc = audioCtx.createOscillator();
+      const gain = audioCtx.createGain();
+      osc.type = "sine";
+      osc.frequency.setValueAtTime(880, audioCtx.currentTime); // 880 Hz
+      gain.gain.setValueAtTime(0.12, audioCtx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.22);
+      osc.connect(gain);
+      gain.connect(audioCtx.destination);
+      osc.start();
+      osc.stop(audioCtx.currentTime + 0.22);
+    } catch {
+      // Audio synthesis fallback
+    }
+  };
+
+  // Cleanup camera loop on unmount
+  useEffect(() => {
+    return () => {
+      if (scanFrameIdRef.current) {
+        cancelAnimationFrame(scanFrameIdRef.current);
+      }
+      if (videoRef.current && videoRef.current.srcObject) {
+        const stream = videoRef.current.srcObject as MediaStream;
+        stream.getTracks().forEach((t) => t.stop());
+      }
+    };
+  }, []);
+
+  // Scanner Open / Camera handler
   const handleOpenScanner = () => {
     setIsScannerModalOpen(true);
     setIsScanSuccess(false);
-    setStatusMessage("Scanner activated. Align the doctor's QR code.");
+    setStatusMessage("");
+    setScannedDoctor(null);
+    setQrScanStatusMsg("");
+    setQrCodeInput("");
     if (onScanClick) onScanClick();
   };
 
-  const handleSimulateScan = () => {
-    setIsScanSuccess(true);
-    setStatusMessage("QR verified! Connected to Dr. Rajesh Rao's consultation room.");
+  const handleStartCamera = async () => {
+    setIsCameraActive(true);
+    setQrScanStatusMsg("Camera viewfinder activated. Align doctor desk QR badge...");
+    try {
+      if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+        const stream = await navigator.mediaDevices.getUserMedia({
+          video: { facingMode: "environment" },
+        });
+        if (videoRef.current) {
+          videoRef.current.srcObject = stream;
+          await videoRef.current.play();
+
+          // Active Frame Scanner Loop using jsQR
+          const scanFrame = () => {
+            if (!videoRef.current || videoRef.current.readyState < 2) {
+              scanFrameIdRef.current = requestAnimationFrame(scanFrame);
+              return;
+            }
+
+            const video = videoRef.current;
+            if (!scanCanvasRef.current) {
+              scanCanvasRef.current = document.createElement("canvas");
+            }
+            const canvas = scanCanvasRef.current;
+            canvas.width = video.videoWidth || 320;
+            canvas.height = video.videoHeight || 240;
+            const ctx = canvas.getContext("2d", { willReadFrequently: true });
+            if (ctx) {
+              ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+              const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+              const code = jsQR(imageData.data, imageData.width, imageData.height, {
+                inversionAttempts: "dontInvert",
+              });
+
+              if (code && code.data && code.data.trim()) {
+                playSuccessBeep();
+                handleScanDoctorCode(code.data.trim());
+                return;
+              }
+            }
+
+            scanFrameIdRef.current = requestAnimationFrame(scanFrame);
+          };
+
+          scanFrameIdRef.current = requestAnimationFrame(scanFrame);
+        }
+      }
+    } catch {
+      // Camera permission or device fallback
+      setQrScanStatusMsg("Camera stream active. Tap 1-click test badge if camera is simulated.");
+    }
+  };
+
+  const handleStopCamera = () => {
+    if (scanFrameIdRef.current) {
+      cancelAnimationFrame(scanFrameIdRef.current);
+      scanFrameIdRef.current = null;
+    }
+    if (videoRef.current && videoRef.current.srcObject) {
+      const stream = videoRef.current.srcObject as MediaStream;
+      stream.getTracks().forEach((track) => track.stop());
+      videoRef.current.srcObject = null;
+    }
+    setIsCameraActive(false);
+  };
+
+  const handleScanDoctorCode = (code: string) => {
+    handleStopCamera();
+    const doc = demoStore.getDoctorByQr(code);
+    if (doc) {
+      setScannedDoctor(doc);
+      setIsScanSuccess(true);
+      setQrScanStatusMsg(`✓ Verified: ${doc.name} (${doc.roomNumber} · ${doc.hospital})`);
+    } else {
+      setQrScanStatusMsg(`QR code "${code}" recognized, but not mapped to an active OPD. Use 1-click test preset.`);
+    }
+  };
+
+  const handleCheckInExistingCase = (consId: string, doc: DoctorProfile) => {
+    demoStore.assignDoctorToConsultation(consId, doc);
+    setQrScanStatusMsg(`✓ Checked in to ${doc.name} (${doc.roomNumber})! Notifying workstation...`);
     setTimeout(() => {
       setIsScannerModalOpen(false);
-    }, 1800);
+      setScannedDoctor(null);
+      setIsScanSuccess(false);
+      setActiveTab("overview");
+    }, 1000);
+  };
+
+  const handleStartNewCaseForScannedDoctor = (doc: DoctorProfile) => {
+    setSelectedDoctorForNewCase(doc);
+    setIsScannerModalOpen(false);
+    setScannedDoctor(null);
+    setIsScanSuccess(false);
+    setIsCaseIntakeOpen(true);
+  };
+
+  // Add Family Member Handlers
+  const handleSendConsentRequest = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newMemberName.trim() || !newMemberAbha.trim()) return;
+    setConsentState("sending");
+    setTimeout(() => {
+      setConsentState("request_sent");
+    }, 800);
+  };
+
+  const handleSimulateRelativeAccept = () => {
+    const newMember: FamilyMember = {
+      id: `fam-${Date.now()}`,
+      name: newMemberName.trim(),
+      relation: newMemberRelation,
+      age: Number(newMemberAge) || 30,
+      abhaId: newMemberAbha.trim(),
+      conditions: newMemberConditions
+        .split(",")
+        .map((c) => c.trim())
+        .filter(Boolean),
+      bloodGroup: newMemberBlood,
+      linked: true,
+    };
+    setFamilyMembers((prev) => [...prev, newMember]);
+    setConsentState("accepted");
+    setMemberSuccessMsg(t("memberLinkedSuccess"));
+    setTimeout(() => {
+      setIsAddMemberModalOpen(false);
+      setConsentState("form");
+      setNewMemberName("");
+      setNewMemberAbha("");
+      setNewMemberConditions("None");
+      setMemberSuccessMsg("");
+    }, 1500);
+  };
+
+  const handleHistoryFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setOcrLoading(true);
+    setUploadedFileName(file.name);
+    try {
+      const ocrRes = await runOcrOnFile(file, (p, s) => setOcrProgress({ progress: p, status: s }));
+      const newDoc: AttachedDocument = {
+        id: `doc-${Date.now()}`,
+        name: file.name,
+        type: ocrRes.parsedSummary.documentType,
+        date: ocrRes.parsedSummary.dateFound || new Date().toLocaleDateString("en-GB"),
+        ocrText: ocrRes.text,
+        fileSize: `${Math.round(file.size / 1024)} KB`,
+        previewUrl: URL.createObjectURL(file),
+      };
+      setAttachedDoc(newDoc);
+      autoFillFromOcr(ocrRes, file.name);
+    } catch (err) {
+      console.error("History file OCR error:", err);
+    } finally {
+      setOcrLoading(false);
+      if (e.target) e.target.value = "";
+    }
+  };
+
+  const handleAttachHistorySample = async (sampleId: string) => {
+    const sample = SAMPLE_DOCUMENTS.find((s) => s.id === sampleId);
+    if (!sample) return;
+
+    setOcrLoading(true);
+    setUploadedFileName(sample.name);
+    try {
+      const ocrRes = await runOcrOnFile(sample.id, (p, s) =>
+        setOcrProgress({ progress: p, status: s })
+      );
+      const newDoc: AttachedDocument = {
+        id: `doc-${Date.now()}`,
+        name: sample.name,
+        type: sample.type,
+        date: sample.date,
+        ocrText: ocrRes.text,
+        fileSize: sample.fileSize,
+        previewUrl: sample.previewUrl,
+      };
+      setAttachedDoc(newDoc);
+      autoFillFromOcr(ocrRes, sample.name);
+    } catch (err) {
+      console.error("History sample OCR error:", err);
+    } finally {
+      setOcrLoading(false);
+    }
+  };
+
+  const autoFillFromOcr = (ocrRes: any, filename: string) => {
+    if (ocrRes.parsedSummary.documentType === "prescription") {
+      setNewType("medication");
+      setNewTitle(
+        ocrRes.parsedSummary.doctorFound
+          ? `Prescription - ${ocrRes.parsedSummary.doctorFound}`
+          : `Prescription Record (${filename})`
+      );
+    } else if (ocrRes.parsedSummary.documentType === "lab_report") {
+      setNewType("lab");
+      setNewTitle(`Diagnostic Lab Report (${filename})`);
+    } else {
+      setNewType("consultation");
+      setNewTitle(`Clinical Record (${filename})`);
+    }
+
+    if (ocrRes.parsedSummary.doctorFound) {
+      setNewDoctor(ocrRes.parsedSummary.doctorFound);
+    } else {
+      setNewDoctor("Dr. Rajesh Sharma");
+    }
+
+    if (ocrRes.text.toLowerCase().includes("apex")) {
+      setNewFacility("Apex Diagnostic Laboratories");
+    } else if (ocrRes.text.toLowerCase().includes("metropolis")) {
+      setNewFacility("Metropolis Health Clinic");
+    } else {
+      setNewFacility("Carelink Primary Care Clinic");
+    }
+
+    const todayStr = new Date().toISOString().split("T")[0];
+    setNewDate(todayStr);
+
+    if (ocrRes.parsedSummary.extractedItems && ocrRes.parsedSummary.extractedItems.length > 0) {
+      setNewNotes(ocrRes.parsedSummary.extractedItems.join("\n"));
+    } else if (ocrRes.text) {
+      setNewNotes(ocrRes.text.slice(0, 280));
+    }
+
+    setOcrAutoDetectedMsg("✓ Document Scanned & Details Auto-Detected via OCR! Review and edit the fields below before saving.");
+    setTimeout(() => setOcrAutoDetectedMsg(""), 6000);
   };
 
   const handleAddHistorySubmit = (e: React.FormEvent) => {
@@ -192,7 +508,8 @@ export const PatientDashboard: React.FC<PatientDashboardProps> = ({
       doctor: newDoctor.trim() || "Attending Physician",
       facility: newFacility.trim() || "Carelink Clinical OPD",
       notes: newNotes.trim() || "Record uploaded and linked to ABHA profile.",
-      tag: uploadedFileName ? `Report: ${uploadedFileName}` : "Patient Self-Reported",
+      tag: attachedDoc ? `OCR: ${attachedDoc.name}` : uploadedFileName ? `Report: ${uploadedFileName}` : "Patient Self-Reported",
+      attachments: attachedDoc ? [attachedDoc] : undefined,
     };
 
     demoStore.savePatient({
@@ -205,6 +522,7 @@ export const PatientDashboard: React.FC<PatientDashboardProps> = ({
     setNewFacility("");
     setNewNotes("");
     setUploadedFileName("");
+    setAttachedDoc(null);
 
     setTimeout(() => {
       setAddSuccessMessage("");
@@ -224,52 +542,70 @@ export const PatientDashboard: React.FC<PatientDashboardProps> = ({
       ? timelineRecords
       : timelineRecords.filter((r) => r.type === timelineFilter);
 
+  // Categorize Family Members by Generation for Pedigree Visualization
+  const parents = familyMembers.filter(
+    (m) => m.relation === "Father" || m.relation === "Mother"
+  );
+  const siblingsAndSpouse = familyMembers.filter(
+    (m) =>
+      m.relation === "Spouse" ||
+      m.relation === "Brother" ||
+      m.relation === "Sister"
+  );
+  const children = familyMembers.filter(
+    (m) => m.relation === "Son" || m.relation === "Daughter"
+  );
+
   return (
     <div className="min-h-screen w-full bg-[#f0fff4] text-[#092c20] font-mono antialiased flex flex-col relative pb-28 sm:pb-32">
-      {/* Top Navigation Bar with Profile Icon */}
+      {/* Top Navigation Bar with Profile Dropdown & Logout */}
       <Navbar
         isLoggedIn={true}
         patientName={fullName}
         patientInitials={initials}
         onProfileClick={onProfileClick}
+        onLogout={onLogout}
       />
 
       {/* Main Content Area */}
       <main className="flex-1 w-full max-w-5xl mx-auto px-4 sm:px-8 py-6 sm:py-10">
-        {/* Header Greeting */}
+        {/* Header Greeting & Prominent "+ Start New Case" Button at Top */}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6 sm:mb-8 pb-4 border-b border-[#003d29]/10">
           <div>
             <div className="flex items-center gap-2 mb-1.5">
               <span className="text-[11px] font-bold uppercase tracking-wider text-[#347355] bg-[#c9fdd7]/70 px-2.5 py-0.5 rounded-full border border-[#003d29]/10">
-                Patient Portal
+                {t("patientPortal")}
               </span>
               <span className="text-[11px] text-[#587366] font-medium">
-                ABHA ID: 12-3456-7890-1234
+                {t("abhaId")}: 12-3456-7890-1234
               </span>
             </div>
             <h1 className="text-2xl sm:text-3xl lg:text-4xl font-bold text-[#003d29] tracking-tight leading-tight">
-              Good morning, {patientName}
+              {t("goodMorning")}, {patientName}
             </h1>
             <p className="mt-1 text-xs sm:text-sm text-[#587366]">
-              Your active consultation queue and digital medical record are up to date.
+              {t("portalSubtitle")}
             </p>
           </div>
 
           <div className="flex flex-wrap items-center gap-3">
-            {/* Start New Consultation CTA */}
+            {/* Prominent "+ Start New Case" CTA at Top */}
             <button
               type="button"
-              onClick={() => setIsCaseIntakeOpen(true)}
-              className="inline-flex items-center gap-2 px-4 py-2 bg-[#003d29] hover:bg-[#347355] text-[#f0fff4] rounded-xl text-xs font-bold transition-all shadow-md shadow-[#003d29]/15 cursor-pointer"
+              onClick={() => {
+                setSelectedDoctorForNewCase(null);
+                setIsCaseIntakeOpen(true);
+              }}
+              className="inline-flex items-center gap-2 px-4 py-2.5 bg-[#003d29] hover:bg-[#347355] text-[#f0fff4] rounded-xl text-xs font-bold transition-all shadow-md shadow-[#003d29]/15 cursor-pointer transform hover:-translate-y-0.5 active:translate-y-0"
             >
               <Stethoscope className="w-4 h-4 text-[#c9fdd7]" />
-              <span>Start New Consultation</span>
-              <span className="text-[10px] px-1.5 py-0.2 bg-[#c9fdd7] text-[#003d29] rounded-md font-bold">
-                AI Intake
+              <span>{t("startNewCase")}</span>
+              <span className="text-[10px] px-1.5 py-0.5 bg-[#c9fdd7] text-[#003d29] rounded-md font-bold">
+                {t("aiIntake")}
               </span>
             </button>
 
-            {/* Quick Tab Pill for Desktop */}
+            {/* Quick Navigation Tabs for Desktop */}
             <div className="hidden md:flex items-center gap-1.5 p-1 bg-[#c9fdd7]/60 rounded-xl border border-[#003d29]/10">
               <button
                 type="button"
@@ -280,7 +616,7 @@ export const PatientDashboard: React.FC<PatientDashboardProps> = ({
                     : "text-[#003d29] hover:bg-white/50"
                 }`}
               >
-                Overview
+                {t("overview")}
               </button>
               <button
                 type="button"
@@ -291,7 +627,7 @@ export const PatientDashboard: React.FC<PatientDashboardProps> = ({
                     : "text-[#003d29] hover:bg-white/50"
                 }`}
               >
-                Timeline
+                {t("timeline")}
               </button>
               <button
                 type="button"
@@ -302,7 +638,7 @@ export const PatientDashboard: React.FC<PatientDashboardProps> = ({
                     : "text-[#003d29] hover:bg-white/50"
                 }`}
               >
-                + Add History
+                {t("addHistory")}
               </button>
               <button
                 type="button"
@@ -313,186 +649,21 @@ export const PatientDashboard: React.FC<PatientDashboardProps> = ({
                     : "text-[#003d29] hover:bg-white/50"
                 }`}
               >
-                Family Tree
+                {t("familyTree")}
               </button>
             </div>
           </div>
         </div>
 
-        {/* 4 Quick Action Fields/Cards (Requested: scanner, timeline, add history, family tree) */}
-        <section
-          aria-label="Core Patient Fields"
-          className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 mb-6 sm:mb-8"
-        >
-          {/* Field 1: Scanner Option */}
-          <button
-            type="button"
-            onClick={handleOpenScanner}
-            className="flex flex-col items-start justify-between p-4 sm:p-5 rounded-2xl bg-white border border-[#003d29]/15 hover:border-[#347355] hover:shadow-md transition-all text-left cursor-pointer group hover:-translate-y-0.5"
-          >
-            <div className="grid place-items-center w-10 h-10 sm:w-11 sm:h-11 rounded-xl bg-[#003d29] text-[#c9fdd7] mb-3 group-hover:scale-105 transition-transform">
-              <QrCode className="w-5 h-5 stroke-[2.2]" />
-            </div>
-            <div>
-              <span className="block text-xs sm:text-sm font-bold text-[#003d29] leading-snug">
-                Doctor Scanner
-              </span>
-              <span className="block text-[10px] sm:text-[11px] text-[#587366] mt-0.5">
-                Scan room QR badge
-              </span>
-            </div>
-            <span className="inline-flex items-center gap-1 mt-3 text-[10px] font-bold text-[#347355] group-hover:text-[#003d29]">
-              <span>Open</span>
-              <ChevronRight className="w-3 h-3 group-hover:translate-x-0.5 transition-transform" />
-            </span>
-          </button>
-
-          {/* Field 2: Timeline Option */}
-          <button
-            type="button"
-            onClick={() => setActiveTab("timeline")}
-            className={`flex flex-col items-start justify-between p-4 sm:p-5 rounded-2xl border transition-all text-left cursor-pointer group hover:-translate-y-0.5 ${
-              activeTab === "timeline"
-                ? "bg-[#003d29] text-[#f0fff4] border-[#003d29] shadow-md"
-                : "bg-white border-[#003d29]/15 hover:border-[#347355] hover:shadow-md"
-            }`}
-          >
-            <div
-              className={`grid place-items-center w-10 h-10 sm:w-11 sm:h-11 rounded-xl mb-3 transition-transform group-hover:scale-105 ${
-                activeTab === "timeline"
-                  ? "bg-white/15 text-[#c9fdd7]"
-                  : "bg-[#c9fdd7]/70 text-[#003d29]"
-              }`}
-            >
-              <Clock className="w-5 h-5 stroke-[2.2]" />
-            </div>
-            <div>
-              <span
-                className={`block text-xs sm:text-sm font-bold leading-snug ${
-                  activeTab === "timeline" ? "text-[#f0fff4]" : "text-[#003d29]"
-                }`}
-              >
-                Health Timeline
-              </span>
-              <span
-                className={`block text-[10px] sm:text-[11px] mt-0.5 ${
-                  activeTab === "timeline" ? "text-[#f0fff4]/75" : "text-[#587366]"
-                }`}
-              >
-                {timelineRecords.length} recorded visits & tests
-              </span>
-            </div>
-            <span
-              className={`inline-flex items-center gap-1 mt-3 text-[10px] font-bold ${
-                activeTab === "timeline" ? "text-[#c9fdd7]" : "text-[#347355]"
-              }`}
-            >
-              <span>View</span>
-              <ChevronRight className="w-3 h-3 group-hover:translate-x-0.5 transition-transform" />
-            </span>
-          </button>
-
-          {/* Field 3: Add History Option */}
-          <button
-            type="button"
-            onClick={() => setActiveTab("add-history")}
-            className={`flex flex-col items-start justify-between p-4 sm:p-5 rounded-2xl border transition-all text-left cursor-pointer group hover:-translate-y-0.5 ${
-              activeTab === "add-history"
-                ? "bg-[#003d29] text-[#f0fff4] border-[#003d29] shadow-md"
-                : "bg-white border-[#003d29]/15 hover:border-[#347355] hover:shadow-md"
-            }`}
-          >
-            <div
-              className={`grid place-items-center w-10 h-10 sm:w-11 sm:h-11 rounded-xl mb-3 transition-transform group-hover:scale-105 ${
-                activeTab === "add-history"
-                  ? "bg-white/15 text-[#c9fdd7]"
-                  : "bg-[#c9fdd7]/70 text-[#003d29]"
-              }`}
-            >
-              <PlusCircle className="w-5 h-5 stroke-[2.2]" />
-            </div>
-            <div>
-              <span
-                className={`block text-xs sm:text-sm font-bold leading-snug ${
-                  activeTab === "add-history" ? "text-[#f0fff4]" : "text-[#003d29]"
-                }`}
-              >
-                Add History
-              </span>
-              <span
-                className={`block text-[10px] sm:text-[11px] mt-0.5 ${
-                  activeTab === "add-history" ? "text-[#f0fff4]/75" : "text-[#587366]"
-                }`}
-              >
-                Upload reports & records
-              </span>
-            </div>
-            <span
-              className={`inline-flex items-center gap-1 mt-3 text-[10px] font-bold ${
-                activeTab === "add-history" ? "text-[#c9fdd7]" : "text-[#347355]"
-              }`}
-            >
-              <span>+ Record</span>
-              <ChevronRight className="w-3 h-3 group-hover:translate-x-0.5 transition-transform" />
-            </span>
-          </button>
-
-          {/* Field 4: Family Tree Option */}
-          <button
-            type="button"
-            onClick={() => setActiveTab("family-tree")}
-            className={`flex flex-col items-start justify-between p-4 sm:p-5 rounded-2xl border transition-all text-left cursor-pointer group hover:-translate-y-0.5 ${
-              activeTab === "family-tree"
-                ? "bg-[#003d29] text-[#f0fff4] border-[#003d29] shadow-md"
-                : "bg-white border-[#003d29]/15 hover:border-[#347355] hover:shadow-md"
-            }`}
-          >
-            <div
-              className={`grid place-items-center w-10 h-10 sm:w-11 sm:h-11 rounded-xl mb-3 transition-transform group-hover:scale-105 ${
-                activeTab === "family-tree"
-                  ? "bg-white/15 text-[#c9fdd7]"
-                  : "bg-[#c9fdd7]/70 text-[#003d29]"
-              }`}
-            >
-              <Users className="w-5 h-5 stroke-[2.2]" />
-            </div>
-            <div>
-              <span
-                className={`block text-xs sm:text-sm font-bold leading-snug ${
-                  activeTab === "family-tree" ? "text-[#f0fff4]" : "text-[#003d29]"
-                }`}
-              >
-                Family Tree
-              </span>
-              <span
-                className={`block text-[10px] sm:text-[11px] mt-0.5 ${
-                  activeTab === "family-tree" ? "text-[#f0fff4]/75" : "text-[#587366]"
-                }`}
-              >
-                {familyMembers.length} linked health profiles
-              </span>
-            </div>
-            <span
-              className={`inline-flex items-center gap-1 mt-3 text-[10px] font-bold ${
-                activeTab === "family-tree" ? "text-[#c9fdd7]" : "text-[#347355]"
-              }`}
-            >
-              <span>Explore</span>
-              <ChevronRight className="w-3 h-3 group-hover:translate-x-0.5 transition-transform" />
-            </span>
-          </button>
-        </section>
-
-        {/* Tab View 1: Overview (Active Token & Live Queue) */}
+        {/* Tab View 1: Overview (Active Token & Cases) */}
         {activeTab === "overview" && (
-          <div className="space-y-5 animate-fade-in">
-            {/* Top Cards Grid */}
-            <section
-              aria-label="Current consultation status"
-              className="grid grid-cols-1 md:grid-cols-[1.15fr_0.85fr] gap-5"
-            >
-              {/* Active Token Card */}
-              <article className="relative overflow-hidden p-6 sm:p-8 bg-[#003d29] text-[#f0fff4] rounded-2xl shadow-xl shadow-[#003d29]/15 flex flex-col justify-between min-h-[260px]">
+          <div className="space-y-6 animate-fade-in">
+            {/* Top Consultation Card:
+                - If active consultation exists, shows the prominent Active Token Card.
+                - If initial state / no consultation, shows clean "No Active Consultation" banner without false doctor assignment.
+            */}
+            {latestConsultation ? (
+              <article className="relative overflow-hidden p-6 sm:p-8 bg-[#003d29] text-[#f0fff4] rounded-2xl shadow-xl shadow-[#003d29]/15 flex flex-col justify-between min-h-[220px]">
                 <div
                   className="pointer-events-none absolute -right-16 -top-16 w-56 h-56 rounded-full border border-[#c9fdd7]/10"
                   aria-hidden="true"
@@ -501,150 +672,336 @@ export const PatientDashboard: React.FC<PatientDashboardProps> = ({
                 <div>
                   <div className="flex items-center justify-between">
                     <span className="text-[11px] font-bold uppercase tracking-widest text-[#f0fff4]/70">
-                      {latestConsultation ? (latestConsultation.status === "Completed" ? "Recent Consultation" : "Current Token") : "Consultation Status"}
+                      {latestConsultation.status === "Completed"
+                        ? "Completed Consultation"
+                        : t("currentActiveToken")}
                     </span>
-                    {latestConsultation ? (
-                      latestConsultation.status === "Completed" ? (
-                        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-emerald-500/20 text-[#c9fdd7] text-[10px] font-bold border border-emerald-400/30">
-                          <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
-                          <span>Consultation Completed</span>
-                        </span>
-                      ) : (
-                        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-[#6bbf8c]/20 text-[#c9fdd7] text-[10px] font-bold border border-[#6bbf8c]/30">
-                          <span className="w-2 h-2 rounded-full bg-[#6bbf8c] animate-pulse" />
-                          <span>Live in queue · Dr. Ananya Kulkarni</span>
-                        </span>
-                      )
+
+                    {latestConsultation.status === "Completed" ? (
+                      <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-emerald-500/20 text-[#c9fdd7] text-[10px] font-bold border border-emerald-400/30">
+                        <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
+                        <span>Consultation Completed</span>
+                      </span>
+                    ) : latestConsultation.checkInStatus === "pending_qr" || !latestConsultation.doctorId ? (
+                      <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-amber-500/25 text-amber-200 text-[10px] font-bold border border-amber-400/40 animate-pulse">
+                        <AlertCircle className="w-3.5 h-3.5 text-amber-300" />
+                        <span>Case Created · Awaiting Room QR</span>
+                      </span>
                     ) : (
-                      <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-white/15 text-[#c9fdd7] text-[10px] font-bold border border-white/20">
-                        Ready to Start
+                      <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-[#6bbf8c]/20 text-[#c9fdd7] text-[10px] font-bold border border-[#6bbf8c]/30">
+                        <span className="w-2 h-2 rounded-full bg-[#6bbf8c] animate-pulse" />
+                        <span>{t("activeConsultation")} · {latestConsultation.doctorName || "OPD Desk"}</span>
                       </span>
                     )}
                   </div>
 
-                  <div className="my-5 text-4xl sm:text-5xl lg:text-6xl font-bold text-[#c9fdd7] tracking-tight">
-                    {latestConsultation ? latestConsultation.tokenNumber : "Ready"}
+                  <div className="my-4 text-4xl sm:text-5xl lg:text-6xl font-bold text-[#c9fdd7] tracking-tight">
+                    {latestConsultation.tokenNumber}
                   </div>
-                  {latestConsultation?.status === "Completed" && (
+
+                  {latestConsultation.status === "Completed" ? (
                     <p className="text-xs text-[#c9fdd7]/90 font-medium">
                       Diagnosis: <strong>{latestConsultation.diagnosis}</strong> ({latestConsultation.prescriptions?.length || 0} medicines prescribed)
                     </p>
-                  )}
-                  {!latestConsultation && (
-                    <p className="text-xs text-[#c9fdd7]/80">
-                      Click below to start an AI-assisted intake with Dr. Ananya Kulkarni.
-                    </p>
+                  ) : (
+                    <div className="space-y-1">
+                      <p className="text-xs text-[#c9fdd7] font-semibold truncate">
+                        Complaint: &ldquo;{latestConsultation.chiefComplaint}&rdquo;
+                      </p>
+                      {latestConsultation.checkInStatus === "pending_qr" || !latestConsultation.doctorId ? (
+                        <p className="text-[11px] text-amber-200 font-medium">
+                          ⚠️ {t("scanDoctorQrToComplete")}
+                        </p>
+                      ) : (
+                        <p className="text-[11px] text-[#c9fdd7]/85">
+                          ✓ {t("checkedInViaQr")} · {latestConsultation.doctorName} ({latestConsultation.doctorDepartment || "OPD Room 3"}).
+                        </p>
+                      )}
+                    </div>
                   )}
                 </div>
 
-                <div className="pt-5 border-t border-[#c9fdd7]/20 flex items-center justify-between">
+                <div className="pt-4 mt-4 border-t border-[#c9fdd7]/20 flex items-center justify-between">
                   <div className="grid grid-cols-2 gap-4">
                     <div>
-                      <span className="block text-[11px] text-[#f0fff4]/65">Queue status</span>
-                      <strong className="block mt-0.5 text-base sm:text-lg font-bold text-[#f0fff4]">
-                        {latestConsultation ? (latestConsultation.status === "Completed" ? "Finished" : `#${queuePosition} in line`) : "Available"}
+                      <span className="block text-[11px] text-[#f0fff4]/65">{t("consultationStatus")}</span>
+                      <strong className="block mt-0.5 text-sm sm:text-base font-bold text-[#f0fff4]">
+                        {latestConsultation.status === "Completed"
+                          ? "Completed"
+                          : latestConsultation.checkInStatus === "pending_qr" || !latestConsultation.doctorId
+                          ? "Pending Desk QR"
+                          : "Checked In & Ready"}
                       </strong>
                     </div>
                     <div>
-                      <span className="block text-[11px] text-[#f0fff4]/65">Attending OPD</span>
-                      <strong className="block mt-0.5 text-base sm:text-lg font-bold text-[#f0fff4]">
-                        Dr. Ananya Kulkarni
+                      <span className="block text-[11px] text-[#f0fff4]/65">{t("attendingOpd")}</span>
+                      <strong className="block mt-0.5 text-sm sm:text-base font-bold text-[#f0fff4] truncate">
+                        {latestConsultation.doctorName
+                          ? `${latestConsultation.doctorName} (${latestConsultation.doctorDepartment || "OPD Room 3"})`
+                          : "Pending Desk QR (Scan QR)"}
                       </strong>
                     </div>
                   </div>
 
-                  {!latestConsultation && (
+                  {latestConsultation.checkInStatus === "pending_qr" || !latestConsultation.doctorId ? (
                     <button
                       type="button"
-                      onClick={() => setIsCaseIntakeOpen(true)}
-                      className="px-3.5 py-2 rounded-xl bg-[#c9fdd7] hover:bg-white text-[#003d29] text-xs font-bold transition-all cursor-pointer shadow-sm"
+                      onClick={handleOpenScanner}
+                      className="px-4 py-2 rounded-xl bg-amber-400 hover:bg-amber-300 text-[#003d29] text-xs font-bold transition-all cursor-pointer shadow-sm flex items-center gap-1.5"
                     >
-                      Start Case →
+                      <QrCode className="w-3.5 h-3.5" />
+                      <span>{t("scanRoomQr")}</span>
+                    </button>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={onViewSummaryClick}
+                      className="px-4 py-2 rounded-xl bg-[#c9fdd7] hover:bg-white text-[#003d29] text-xs font-bold transition-all cursor-pointer shadow-sm"
+                    >
+                      {t("viewToken")} →
                     </button>
                   )}
                 </div>
               </article>
-
-              {/* Doctor QR Scanner Card */}
-              <article className="flex flex-col justify-between p-6 sm:p-8 bg-white border border-[#003d29]/15 rounded-2xl shadow-sm min-h-[260px]">
-                <div>
-                  <div className="grid place-items-center w-12 h-12 rounded-xl bg-[#c9fdd7]/60 text-[#347355] mb-4">
-                    <ScanLine className="w-6 h-6 stroke-[2.2]" />
-                  </div>
-
-                  <h2 className="text-lg font-bold text-[#003d29] tracking-tight">
-                    Doctor Room Scanner
+            ) : (
+              /* Clean Initial State Banner: No fake doctor assignment before intake / QR scan */
+              <article className="relative overflow-hidden p-6 sm:p-8 bg-white border border-[#003d29]/15 rounded-2xl shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-6">
+                <div className="space-y-2">
+                  <span className="inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider text-[#347355] bg-[#c9fdd7] px-2.5 py-0.5 rounded-full border border-[#003d29]/10">
+                    {t("readyToStart")}
+                  </span>
+                  <h2 className="text-xl sm:text-2xl font-bold text-[#003d29]">
+                    {t("noActiveConsultation")}
                   </h2>
-                  <p className="mt-2 text-xs text-[#587366] leading-relaxed">
-                    Scan Dr. Ananya Kulkarni&apos;s desk QR badge (<code className="text-[#003d29] font-bold">OPD-DEMOCARE-3</code>) upon entering.
+                  <p className="text-xs sm:text-sm text-[#587366] max-w-lg leading-relaxed">
+                    {t("noActiveConsultationDesc")}
                   </p>
                 </div>
 
-                <button
-                  type="button"
-                  onClick={handleOpenScanner}
-                  className="mt-6 flex items-center justify-center gap-2 w-full py-3.5 px-4 bg-[#347355] hover:bg-[#003d29] text-[#f0fff4] rounded-xl text-xs sm:text-sm font-bold shadow-md shadow-[#347355]/20 hover:shadow-[#347355]/30 transition-all duration-200 cursor-pointer transform hover:-translate-y-0.5 active:translate-y-0"
-                >
-                  <QrCode className="w-4 h-4" />
-                  <span>Open Scanner</span>
-                </button>
+                <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5 flex-shrink-0">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSelectedDoctorForNewCase(null);
+                      setIsCaseIntakeOpen(true);
+                    }}
+                    className="px-4 py-2.5 bg-[#003d29] hover:bg-[#347355] text-white rounded-xl text-xs font-bold transition-all cursor-pointer shadow-sm flex items-center justify-center gap-2"
+                  >
+                    <Plus className="w-4 h-4 text-[#c9fdd7]" />
+                    <span>{t("startNewCase")}</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={handleOpenScanner}
+                    className="px-4 py-2.5 bg-[#f0fff4] hover:bg-[#c9fdd7] border border-[#003d29]/20 text-[#003d29] rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-2"
+                  >
+                    <QrCode className="w-4 h-4 text-[#347355]" />
+                    <span>{t("scanRoomQr")}</span>
+                  </button>
+                </div>
               </article>
-            </section>
+            )}
 
-            {/* Medical History Banner */}
+            {/* 4 Core Quick Action Cards: Visible ONLY on Overview tab */}
             <section
-              aria-label="Medical history ready"
-              className="p-5 sm:p-6 bg-white border border-[#003d29]/15 rounded-2xl flex flex-col sm:flex-row sm:items-center justify-between gap-4 transition-all shadow-xs hover:border-[#347355]"
+              aria-label="Core Patient Fields"
+              className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4"
             >
-              <div className="flex items-start sm:items-center gap-3.5">
-                <div className="grid place-items-center w-10 h-10 rounded-xl bg-[#c9fdd7]/60 text-[#003d29] flex-shrink-0">
-                  <FileText className="w-5 h-5 text-[#347355]" />
+              {/* Card 1: The Single Official Doctor Scanner Box */}
+              <button
+                type="button"
+                onClick={handleOpenScanner}
+                className="flex flex-col items-start justify-between p-4 sm:p-5 rounded-2xl bg-white border border-[#003d29]/15 hover:border-[#347355] hover:shadow-md transition-all text-left cursor-pointer group hover:-translate-y-0.5"
+              >
+                <div className="grid place-items-center w-10 h-10 sm:w-11 sm:h-11 rounded-xl bg-[#003d29] text-[#c9fdd7] mb-3 group-hover:scale-105 transition-transform">
+                  <QrCode className="w-5 h-5 stroke-[2.2]" />
                 </div>
                 <div>
-                  <h2 className="text-sm sm:text-base font-bold text-[#003d29]">
-                    {latestConsultation ? "Active Consultation Intake Summary" : "Start New AI Consultation Intake"}
-                  </h2>
-                  <p className="text-xs text-[#587366] mt-0.5">
-                    {latestConsultation
-                      ? "Your clinical summary, chief complaint, and attached documents are prepared for Dr. Ananya Kulkarni."
-                      : "Begin your adaptive case intake to generate your patient token and notify the doctor."}
-                  </p>
+                  <span className="block text-xs sm:text-sm font-bold text-[#003d29] leading-snug">
+                    {t("doctorScannerTitle")}
+                  </span>
+                  <span className="block text-[10px] sm:text-[11px] text-[#587366] mt-0.5">
+                    {t("doctorScannerDesc")}
+                  </span>
                 </div>
-              </div>
+                <span className="inline-flex items-center gap-1 mt-3 text-[10px] font-bold text-[#347355] group-hover:text-[#003d29]">
+                  <span>{t("open")}</span>
+                  <ChevronRight className="w-3 h-3 group-hover:translate-x-0.5 transition-transform" />
+                </span>
+              </button>
 
-              <div className="flex items-center gap-2.5 self-end sm:self-center">
-                <button
-                  type="button"
-                  onClick={() => setActiveTab("timeline")}
-                  className="px-3 py-2 text-xs font-bold text-[#347355] bg-[#f0fff4] hover:bg-[#c9fdd7]/50 rounded-lg border border-[#003d29]/15 cursor-pointer transition-colors"
-                >
-                  Timeline ({timelineRecords.length})
-                </button>
-                {latestConsultation ? (
-                  <button
-                    type="button"
-                    onClick={onViewSummaryClick}
-                    className="inline-flex items-center gap-1.5 px-4 py-2 bg-[#003d29] text-[#f0fff4] rounded-lg text-xs font-bold cursor-pointer hover:bg-[#347355] transition-colors"
-                  >
-                    <span>View Voucher</span>
-                    <ArrowRight className="w-3.5 h-3.5" />
-                  </button>
-                ) : (
-                  <button
-                    type="button"
-                    onClick={() => setIsCaseIntakeOpen(true)}
-                    className="inline-flex items-center gap-1.5 px-4 py-2 bg-[#003d29] text-[#f0fff4] rounded-lg text-xs font-bold cursor-pointer hover:bg-[#347355] transition-colors"
-                  >
-                    <span>Start Case</span>
-                    <ArrowRight className="w-3.5 h-3.5" />
-                  </button>
-                )}
-              </div>
+              {/* Card 2: Timeline Option */}
+              <button
+                type="button"
+                onClick={() => setActiveTab("timeline")}
+                className="flex flex-col items-start justify-between p-4 sm:p-5 rounded-2xl border border-[#003d29]/15 bg-white hover:border-[#347355] hover:shadow-md transition-all text-left cursor-pointer group hover:-translate-y-0.5"
+              >
+                <div className="grid place-items-center w-10 h-10 sm:w-11 sm:h-11 rounded-xl mb-3 transition-transform group-hover:scale-105 bg-[#c9fdd7]/70 text-[#003d29]">
+                  <Clock className="w-5 h-5 stroke-[2.2]" />
+                </div>
+                <div>
+                  <span className="block text-xs sm:text-sm font-bold leading-snug text-[#003d29]">
+                    {t("healthTimelineTitle")}
+                  </span>
+                  <span className="block text-[10px] sm:text-[11px] mt-0.5 text-[#587366]">
+                    {timelineRecords.length} {t("healthTimelineDesc")}
+                  </span>
+                </div>
+                <span className="inline-flex items-center gap-1 mt-3 text-[10px] font-bold text-[#347355]">
+                  <span>{t("view")}</span>
+                  <ChevronRight className="w-3 h-3 group-hover:translate-x-0.5 transition-transform" />
+                </span>
+              </button>
+
+              {/* Card 3: Add History Option */}
+              <button
+                type="button"
+                onClick={() => setActiveTab("add-history")}
+                className="flex flex-col items-start justify-between p-4 sm:p-5 rounded-2xl border border-[#003d29]/15 bg-white hover:border-[#347355] hover:shadow-md transition-all text-left cursor-pointer group hover:-translate-y-0.5"
+              >
+                <div className="grid place-items-center w-10 h-10 sm:w-11 sm:h-11 rounded-xl mb-3 transition-transform group-hover:scale-105 bg-[#c9fdd7]/70 text-[#003d29]">
+                  <PlusCircle className="w-5 h-5 stroke-[2.2]" />
+                </div>
+                <div>
+                  <span className="block text-xs sm:text-sm font-bold leading-snug text-[#003d29]">
+                    {t("addHistoryTitle")}
+                  </span>
+                  <span className="block text-[10px] sm:text-[11px] mt-0.5 text-[#587366]">
+                    {t("addHistoryDesc")}
+                  </span>
+                </div>
+                <span className="inline-flex items-center gap-1 mt-3 text-[10px] font-bold text-[#347355]">
+                  <span>+ Record</span>
+                  <ChevronRight className="w-3 h-3 group-hover:translate-x-0.5 transition-transform" />
+                </span>
+              </button>
+
+              {/* Card 4: Family Tree Option */}
+              <button
+                type="button"
+                onClick={() => setActiveTab("family-tree")}
+                className="flex flex-col items-start justify-between p-4 sm:p-5 rounded-2xl border border-[#003d29]/15 bg-white hover:border-[#347355] hover:shadow-md transition-all text-left cursor-pointer group hover:-translate-y-0.5"
+              >
+                <div className="grid place-items-center w-10 h-10 sm:w-11 sm:h-11 rounded-xl mb-3 transition-transform group-hover:scale-105 bg-[#c9fdd7]/70 text-[#003d29]">
+                  <Users className="w-5 h-5 stroke-[2.2]" />
+                </div>
+                <div>
+                  <span className="block text-xs sm:text-sm font-bold leading-snug text-[#003d29]">
+                    {t("familyTreeTitle")}
+                  </span>
+                  <span className="block text-[10px] sm:text-[11px] mt-0.5 text-[#587366]">
+                    {familyMembers.length} {t("familyTreeDesc")}
+                  </span>
+                </div>
+                <span className="inline-flex items-center gap-1 mt-3 text-[10px] font-bold text-[#347355]">
+                  <span>{t("explore")}</span>
+                  <ChevronRight className="w-3 h-3 group-hover:translate-x-0.5 transition-transform" />
+                </span>
+              </button>
             </section>
+
+            {/* My Consultation Cases Section */}
+            {consultations.length > 0 && (
+              <section
+                aria-label="My Consultation Cases"
+                className="p-5 sm:p-6 bg-white border border-[#003d29]/15 rounded-2xl space-y-4 shadow-xs"
+              >
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <FileText className="w-5 h-5 text-[#347355]" />
+                    <h2 className="text-sm sm:text-base font-bold text-[#003d29]">
+                      {t("myConsultationCases")} ({consultations.length})
+                    </h2>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSelectedDoctorForNewCase(null);
+                      setIsCaseIntakeOpen(true);
+                    }}
+                    className="text-xs font-bold text-[#347355] hover:text-[#003d29] underline underline-offset-4 cursor-pointer"
+                  >
+                    {t("makeNewCase")}
+                  </button>
+                </div>
+
+                <div className="grid grid-cols-1 gap-3">
+                  {consultations.map((cons) => (
+                    <article
+                      key={cons.id}
+                      className="p-4 rounded-xl border border-[#003d29]/10 bg-[#f0fff4]/50 hover:bg-[#f0fff4] transition-all flex flex-col sm:flex-row sm:items-center justify-between gap-3"
+                    >
+                      <div className="space-y-1.5 flex-1 min-w-0">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className="font-mono text-xs font-bold bg-[#003d29] text-[#c9fdd7] px-2.5 py-0.5 rounded-md">
+                            {cons.tokenNumber}
+                          </span>
+                          <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded bg-white text-[#347355] border border-[#003d29]/15">
+                            {cons.pathway === "ayush" ? t("ayushHolistic") : t("generalMedicine")}
+                          </span>
+                          {cons.status === "Completed" ? (
+                            <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-emerald-100 text-emerald-800 border border-emerald-300">
+                              ✓ {t("completed")}
+                            </span>
+                          ) : cons.checkInStatus === "pending_qr" || !cons.doctorId ? (
+                            <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-amber-100 text-amber-800 border border-amber-300">
+                              ⚠️ {t("awaitingRoomQr")}
+                            </span>
+                          ) : (
+                            <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-emerald-100 text-emerald-800 border border-emerald-300 flex items-center gap-1">
+                              <span className="w-1.5 h-1.5 rounded-full bg-emerald-600 animate-pulse" />
+                              <span>{t("checkedIn")} · {cons.doctorRoom || "OPD Room 3"}</span>
+                            </span>
+                          )}
+                        </div>
+
+                        <p className="text-xs text-[#003d29] font-semibold truncate">
+                          &ldquo;{cons.chiefComplaint}&rdquo;
+                        </p>
+
+                        <div className="text-[11px] text-[#587366] flex flex-wrap items-center gap-3">
+                          <span>
+                            {t("physician")}: <strong>{cons.doctorName || "Pending Desk QR"}</strong>
+                          </span>
+                          <span>{t("created")}: {cons.createdAt}</span>
+                          {cons.diagnosis && (
+                            <span className="text-[#003d29] font-medium">
+                              Dx: {cons.diagnosis}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-2 flex-shrink-0">
+                        {cons.checkInStatus === "pending_qr" || !cons.doctorId ? (
+                          <button
+                            type="button"
+                            onClick={handleOpenScanner}
+                            className="px-3 py-1.5 bg-amber-500 hover:bg-amber-600 text-white rounded-lg text-xs font-bold transition-all cursor-pointer shadow-xs flex items-center gap-1.5"
+                          >
+                            <QrCode className="w-3.5 h-3.5" />
+                            <span>{t("scanQr")}</span>
+                          </button>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={onViewSummaryClick}
+                            className="px-3 py-1.5 bg-[#003d29] hover:bg-[#347355] text-white rounded-lg text-xs font-bold transition-all cursor-pointer shadow-xs"
+                          >
+                            {t("viewToken")}
+                          </button>
+                        )}
+                      </div>
+                    </article>
+                  ))}
+                </div>
+              </section>
+            )}
           </div>
         )}
 
-        {/* Tab View 2: Health Timeline (Chronological History) */}
+        {/* Tab View 2: Health Timeline */}
         {activeTab === "timeline" && (
           <section
             aria-label="Health Timeline"
@@ -652,476 +1009,744 @@ export const PatientDashboard: React.FC<PatientDashboardProps> = ({
           >
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-6 border-b border-[#003d29]/10">
               <div>
-                <h2 className="text-lg sm:text-xl font-bold text-[#003d29] tracking-tight">
-                  Medical Health Timeline
+                <span className="text-[11px] font-bold uppercase tracking-wider text-[#347355]">
+                  {t("chronologicalRecord")}
+                </span>
+                <h2 className="text-lg sm:text-xl font-bold text-[#003d29] tracking-tight mt-0.5">
+                  {t("digitalHealthTimeline")}
                 </h2>
                 <p className="text-xs text-[#587366] mt-1">
-                  Chronological records synced securely with your ABDM digital health lockers.
+                  {t("timelineSubtitle")}
                 </p>
               </div>
 
-              <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={() => setActiveTab("add-history")}
-                  className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-[#003d29] text-[#f0fff4] rounded-lg text-xs font-bold hover:bg-[#347355] transition-colors cursor-pointer"
-                >
-                  <Plus className="w-3.5 h-3.5" />
-                  <span>Add Record</span>
-                </button>
+              {/* Filter Pills */}
+              <div className="flex flex-wrap items-center gap-1.5 bg-[#f0fff4] p-1 rounded-xl border border-[#003d29]/10">
+                {(["all", "consultation", "lab", "medication"] as const).map((filter) => (
+                  <button
+                    key={filter}
+                    type="button"
+                    onClick={() => setTimelineFilter(filter)}
+                    className={`px-3 py-1 rounded-lg text-xs font-bold capitalize transition-all cursor-pointer ${
+                      timelineFilter === filter
+                        ? "bg-[#003d29] text-[#f0fff4] shadow-xs"
+                        : "text-[#347355] hover:bg-[#c9fdd7]/50"
+                    }`}
+                  >
+                    {filter}
+                  </button>
+                ))}
               </div>
             </div>
 
-            {/* Filter Pills */}
-            <div className="flex items-center gap-2 my-5 overflow-x-auto pb-1 text-xs">
-              <span className="text-[11px] font-bold text-[#587366] uppercase">Filter:</span>
-              <button
-                type="button"
-                onClick={() => setTimelineFilter("all")}
-                className={`px-3 py-1 rounded-full font-semibold transition-all cursor-pointer ${
-                  timelineFilter === "all"
-                    ? "bg-[#347355] text-white"
-                    : "bg-[#f0fff4] text-[#347355] border border-[#003d29]/15"
-                }`}
-              >
-                All Records ({timelineRecords.length})
-              </button>
-              <button
-                type="button"
-                onClick={() => setTimelineFilter("consultation")}
-                className={`px-3 py-1 rounded-full font-semibold transition-all cursor-pointer ${
-                  timelineFilter === "consultation"
-                    ? "bg-[#347355] text-white"
-                    : "bg-[#f0fff4] text-[#347355] border border-[#003d29]/15"
-                }`}
-              >
-                Consultations
-              </button>
-              <button
-                type="button"
-                onClick={() => setTimelineFilter("lab")}
-                className={`px-3 py-1 rounded-full font-semibold transition-all cursor-pointer ${
-                  timelineFilter === "lab"
-                    ? "bg-[#347355] text-white"
-                    : "bg-[#f0fff4] text-[#347355] border border-[#003d29]/15"
-                }`}
-              >
-                Lab Reports
-              </button>
-            </div>
-
-            {/* Timeline Stream / Empty State */}
-            {filteredTimeline.length === 0 ? (
-              <div className="py-12 px-4 text-center border-2 border-dashed border-[#003d29]/20 rounded-2xl bg-[#f0fff4]/50">
-                <Clock className="w-10 h-10 text-[#347355] mx-auto mb-3 opacity-60" />
-                <h3 className="text-base font-bold text-[#003d29]">No Past Consultations Yet</h3>
-                <p className="text-xs text-[#587366] max-w-sm mx-auto mt-1 mb-5 leading-relaxed">
-                  Your medical timeline is currently empty. Start your first consultation with Dr. Ananya Kulkarni or scan existing records to begin your timeline.
-                </p>
-                <div className="flex flex-wrap items-center justify-center gap-3">
-                  <button
-                    type="button"
-                    onClick={() => setIsCaseIntakeOpen(true)}
-                    className="px-4 py-2.5 rounded-xl bg-[#003d29] hover:bg-[#347355] text-[#f0fff4] text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 shadow-md shadow-[#003d29]/15"
-                  >
-                    <Stethoscope className="w-4 h-4 text-[#c9fdd7]" />
-                    <span>Start Consultation (AI Intake)</span>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setActiveTab("scanner")}
-                    className="px-4 py-2.5 rounded-xl bg-white border border-[#003d29]/20 hover:border-[#347355] text-[#003d29] text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5"
-                  >
-                    <QrCode className="w-4 h-4 text-[#347355]" />
-                    <span>Scan Health Document</span>
-                  </button>
+            {/* Timeline Stream */}
+            <div className="mt-6 space-y-4">
+              {filteredTimeline.length === 0 ? (
+                <div className="py-12 text-center text-[#587366] space-y-2">
+                  <Clock className="w-8 h-8 text-[#347355] mx-auto opacity-50" />
+                  <p className="text-xs font-bold text-[#003d29]">{t("noRecordsFound")}</p>
+                  <p className="text-[11px]">
+                    {t("noRecordsDesc")}
+                  </p>
                 </div>
-              </div>
-            ) : (
-              <div className="relative pl-6 sm:pl-8 space-y-6 before:absolute before:left-2 sm:before:left-3 before:top-3 before:bottom-3 before:w-0.5 before:bg-[#003d29]/15">
-                {filteredTimeline.map((item) => (
-                  <div key={item.id} className="relative group">
-                    {/* Timeline Dot */}
-                    <div className="absolute -left-6 sm:-left-8 top-1.5 w-4 h-4 rounded-full bg-[#347355] border-3 border-white ring-2 ring-[#c9fdd7] flex items-center justify-center" />
-
-                    {/* Card Content */}
-                    <div className="p-4 sm:p-5 rounded-xl bg-[#f0fff4] border border-[#003d29]/10 group-hover:border-[#347355]/40 group-hover:bg-white transition-all shadow-xs space-y-3">
-                      <div className="flex flex-wrap items-center justify-between gap-2">
-                        <span className="text-[11px] font-bold text-[#347355] flex items-center gap-1.5">
-                          <Calendar className="w-3.5 h-3.5" />
-                          <span>{item.date}</span>
-                        </span>
-                        <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-[#c9fdd7] text-[#003d29]">
+              ) : (
+                filteredTimeline.map((item) => (
+                  <article
+                    key={item.id}
+                    className="p-4 sm:p-5 rounded-xl border border-[#003d29]/15 bg-[#f0fff4]/50 hover:bg-[#f0fff4] transition-all space-y-2"
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <span className="text-[10px] font-bold uppercase tracking-wider text-[#347355] bg-[#c9fdd7] px-2 py-0.5 rounded">
                           {item.tag}
                         </span>
-                      </div>
-
-                      <div>
-                        <h3 className="text-sm sm:text-base font-bold text-[#003d29]">
-                          {item.title}
-                        </h3>
-                        <p className="text-xs text-[#587366] mt-0.5">
+                        <h3 className="text-sm font-bold text-[#003d29] mt-1.5">{item.title}</h3>
+                        <p className="text-[11px] text-[#587366]">
                           {item.doctor} · {item.facility}
                         </p>
                       </div>
+                      <span className="text-xs text-[#587366] font-semibold">{item.date}</span>
+                    </div>
 
-                      <p className="text-xs text-[#092c20] leading-relaxed bg-white/80 p-2.5 rounded-lg border border-[#003d29]/10">
-                        {item.notes}
-                      </p>
+                    <p className="text-xs text-[#092c20] leading-relaxed bg-white/70 p-2.5 rounded-lg border border-[#003d29]/10">
+                      {item.notes}
+                    </p>
 
-                      {/* Prescriptions List if attached */}
-                      {item.prescriptions && item.prescriptions.length > 0 && (
-                        <div className="p-3 bg-white rounded-lg border border-[#003d29]/15">
-                          <span className="text-[10px] font-bold uppercase tracking-wider text-[#347355] block mb-2 flex items-center gap-1.5">
-                            <Pill className="w-3.5 h-3.5 text-[#347355]" />
-                            <span>Prescribed Medications ({item.prescriptions.length})</span>
-                          </span>
-                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                            {item.prescriptions.map((rx: any, idx: number) => (
-                              <div
-                                key={rx.id || idx}
-                                className="p-2 rounded bg-[#f0fff4] border border-[#003d29]/10 text-xs"
-                              >
-                                <strong className="text-[#003d29] block">{rx.name}</strong>
-                                <span className="text-[10px] text-[#587366]">
-                                  {rx.dosage} · {rx.frequency} · {rx.duration}
-                                </span>
-                              </div>
-                            ))}
-                          </div>
-                        </div>
-                      )}
-
-                      {/* Attached Documents if present */}
-                      {item.attachments && item.attachments.length > 0 && (
-                        <div className="p-3 bg-white rounded-lg border border-[#003d29]/15 space-y-1.5">
-                          <span className="text-[10px] font-bold uppercase tracking-wider text-[#347355] block mb-1 flex items-center gap-1.5">
-                            <FileCheck className="w-3.5 h-3.5 text-[#347355]" />
-                            <span>Attached Documents & OCR Scans</span>
-                          </span>
-                          {item.attachments.map((doc) => (
+                    {item.prescriptions && item.prescriptions.length > 0 && (
+                      <div className="pt-2">
+                        <span className="text-[10px] font-bold text-[#347355] uppercase block mb-1">
+                          Prescribed Medications:
+                        </span>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5 text-xs">
+                          {item.prescriptions.map((rx, idx) => (
                             <div
-                              key={doc.id}
-                              className="p-2 rounded bg-[#f0fff4] border border-[#003d29]/10 text-xs flex items-start justify-between gap-2"
+                              key={idx}
+                              className="p-2 bg-white rounded border border-[#003d29]/10 text-[#003d29]"
                             >
-                              <div>
-                                <strong className="text-[#003d29]">{doc.name}</strong>
-                                <span className="text-[10px] text-[#587366] block">
-                                  {doc.type.replace("_", " ")} · {doc.fileSize || "Uploaded"}
-                                </span>
-                                {doc.ocrText && (
-                                  <p className="text-[11px] text-[#347355] mt-1 bg-white p-1.5 rounded border border-[#003d29]/10 max-h-16 overflow-y-auto">
-                                    <span className="font-bold">OCR:</span> {doc.ocrText.slice(0, 160)}...
-                                  </p>
-                                )}
-                              </div>
-                              <span className="text-[10px] text-[#347355] font-bold bg-[#c9fdd7] px-2 py-0.5 rounded shrink-0">
-                                OCR Synced
-                              </span>
+                              <strong>{rx.name}</strong> · {rx.frequency} ({rx.duration})
                             </div>
                           ))}
                         </div>
-                      )}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
+                      </div>
+                    )}
+
+                    {/* Attached Documents & Reports */}
+                    {item.attachments && item.attachments.length > 0 && (
+                      <div className="pt-2 border-t border-[#003d29]/10">
+                        <span className="text-[10px] font-bold text-[#347355] uppercase block mb-1.5 flex items-center gap-1">
+                          <FileCheck className="w-3.5 h-3.5 text-[#347355]" />
+                          <span>Attached Clinical Documents ({item.attachments.length}):</span>
+                        </span>
+                        <div className="space-y-1.5">
+                          {item.attachments.map((doc) => (
+                            <div
+                              key={doc.id}
+                              className="p-2.5 bg-white rounded-lg border border-[#003d29]/10 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs"
+                            >
+                              <div className="flex items-center gap-2 min-w-0">
+                                <FileText className="w-4 h-4 text-[#347355] shrink-0" />
+                                <div className="min-w-0">
+                                  <strong className="block text-[#003d29] truncate">{doc.name}</strong>
+                                  <span className="text-[10px] text-[#587366]">
+                                    {doc.type.replace("_", " ")} · {doc.date}
+                                  </span>
+                                </div>
+                              </div>
+                              <button
+                                type="button"
+                                onClick={() => setActiveDocPreview(doc)}
+                                className="px-2.5 py-1 bg-[#f0fff4] hover:bg-[#c9fdd7] text-[#003d29] border border-[#003d29]/15 rounded text-[11px] font-bold transition-colors cursor-pointer self-start sm:self-auto shrink-0"
+                              >
+                                View / OCR Text
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </article>
+                ))
+              )}
+            </div>
           </section>
         )}
 
-        {/* Tab View 3: Add Medical History (Form / Upload) */}
+        {/* Tab View 3: Add Medical History */}
         {activeTab === "add-history" && (
           <section
             aria-label="Add Medical History"
             className="p-5 sm:p-8 bg-white border border-[#003d29]/15 rounded-2xl shadow-sm animate-fade-in max-w-2xl mx-auto"
           >
-            <div className="pb-5 border-b border-[#003d29]/10 mb-6">
+            <div className="pb-5 border-b border-[#003d29]/10">
               <span className="text-[11px] font-bold uppercase tracking-wider text-[#347355]">
-                Self-Reported Record
+                {t("selfReportedRecords")}
               </span>
               <h2 className="text-lg sm:text-xl font-bold text-[#003d29] tracking-tight mt-0.5">
-                Add to Medical History
+                {t("addPastMedicalRecord")}
               </h2>
               <p className="text-xs text-[#587366] mt-1">
-                Record past diagnoses, existing medication, allergies, or upload recent clinical tests.
+                {t("addPastMedicalRecordDesc")}
               </p>
             </div>
 
             {addSuccessMessage && (
-              <div className="mb-6 p-3 bg-[#c9fdd7] border border-[#347355]/30 rounded-xl text-xs font-bold text-[#003d29] flex items-center gap-2 animate-fade-in">
+              <div className="my-4 p-3 bg-[#c9fdd7] border border-[#347355]/30 rounded-xl text-xs font-bold text-[#003d29] flex items-center gap-2">
                 <Check className="w-4 h-4 text-[#347355]" />
                 <span>{addSuccessMessage}</span>
               </div>
             )}
 
-            <form onSubmit={handleAddHistorySubmit} className="space-y-4">
-              {/* Category */}
-              <div>
-                <label className="block text-xs font-bold text-[#003d29] mb-1.5">
-                  Record Category
-                </label>
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-                  {[
-                    { id: "consultation", label: "Consultation", icon: Stethoscope },
-                    { id: "lab", label: "Lab Report", icon: FileText },
-                    { id: "medication", label: "Medication", icon: Pill },
-                    { id: "allergy", label: "Allergy", icon: AlertCircle },
-                  ].map((cat) => {
-                    const Icon = cat.icon;
-                    return (
-                      <button
-                        key={cat.id}
-                        type="button"
-                        onClick={() => setNewType(cat.id as any)}
-                        className={`flex items-center justify-center gap-1.5 p-2.5 rounded-xl text-xs font-bold border transition-all cursor-pointer ${
-                          newType === cat.id
-                            ? "bg-[#003d29] text-[#f0fff4] border-[#003d29] shadow-xs"
-                            : "bg-[#f0fff4] text-[#003d29] border-[#003d29]/15 hover:bg-white"
-                        }`}
-                      >
-                        <Icon className="w-3.5 h-3.5" />
-                        <span>{cat.label}</span>
-                      </button>
-                    );
-                  })}
+            {/* Document Attachment & OCR Auto-Detection Card */}
+            <div className="mt-5 p-4 sm:p-5 rounded-2xl bg-[#f0fff4] border-2 border-dashed border-[#347355]/40 space-y-3.5">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-8 h-8 rounded-lg bg-[#003d29] text-[#c9fdd7] flex items-center justify-center shrink-0">
+                    <ScanLine className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <h3 className="text-xs sm:text-sm font-bold text-[#003d29]">
+                      Attach Document & Auto-Detect via OCR
+                    </h3>
+                    <p className="text-[11px] text-[#587366]">
+                      Upload prescription or lab report to auto-fill title, doctor, facility & clinical details.
+                    </p>
+                  </div>
+                </div>
+
+                {attachedDoc && (
+                  <span className="px-2.5 py-1 rounded-full bg-[#c9fdd7] text-[#003d29] text-[10px] font-bold self-start sm:self-auto flex items-center gap-1">
+                    <Check className="w-3 h-3 text-[#347355]" />
+                    <span>OCR Scanned</span>
+                  </span>
+                )}
+              </div>
+
+              {/* Upload & Camera Buttons */}
+              <div className="flex flex-wrap items-center gap-2">
+                <input
+                  type="file"
+                  ref={historyFileInputRef}
+                  onChange={handleHistoryFileUpload}
+                  accept="image/*,application/pdf"
+                  className="hidden"
+                />
+
+                <button
+                  type="button"
+                  onClick={() => historyFileInputRef.current?.click()}
+                  className="px-3.5 py-2 rounded-xl bg-[#003d29] hover:bg-[#347355] text-white text-xs font-bold flex items-center gap-2 transition-colors cursor-pointer shadow-xs"
+                >
+                  <Upload className="w-3.5 h-3.5 text-[#c9fdd7]" />
+                  <span>Upload File / Photo</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => historyFileInputRef.current?.click()}
+                  className="px-3.5 py-2 rounded-xl bg-white border border-[#003d29]/20 hover:border-[#347355] text-[#003d29] text-xs font-bold flex items-center gap-2 transition-colors cursor-pointer"
+                >
+                  <Camera className="w-3.5 h-3.5 text-[#347355]" />
+                  <span>Scan via Camera</span>
+                </button>
+              </div>
+
+              {/* Quick 1-Click Test Samples */}
+              <div className="pt-2 border-t border-[#003d29]/10">
+                <span className="text-[10px] uppercase font-bold text-[#587366] block mb-1.5">
+                  Or test with 1-click sample document:
+                </span>
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    onClick={() => handleAttachHistorySample("sample-rx-1")}
+                    className="px-2.5 py-1.5 rounded-lg bg-white border border-[#003d29]/15 hover:border-[#347355] hover:bg-[#c9fdd7]/40 text-[11px] font-bold text-[#003d29] flex items-center gap-1.5 cursor-pointer transition-all"
+                  >
+                    <FileText className="w-3.5 h-3.5 text-[#347355]" />
+                    <span>Dr_Sharma_Prescription.png</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => handleAttachHistorySample("sample-lab-1")}
+                    className="px-2.5 py-1.5 rounded-lg bg-white border border-[#003d29]/15 hover:border-[#347355] hover:bg-[#c9fdd7]/40 text-[11px] font-bold text-[#003d29] flex items-center gap-1.5 cursor-pointer transition-all"
+                  >
+                    <FileCheck className="w-3.5 h-3.5 text-[#347355]" />
+                    <span>Apex_CBC_Lab_Report.pdf</span>
+                  </button>
                 </div>
               </div>
 
-              {/* Title */}
+              {/* OCR Scanning Progress */}
+              {ocrLoading && (
+                <div className="p-3 bg-white rounded-xl border border-[#003d29]/15 space-y-2 animate-pulse">
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="font-bold text-[#003d29] flex items-center gap-2">
+                      <Loader2 className="w-4 h-4 animate-spin text-[#347355]" />
+                      <span>{ocrProgress.status || "Scanning document pixels & extracting text..."}</span>
+                    </span>
+                    <span className="font-bold text-[#347355]">{ocrProgress.progress}%</span>
+                  </div>
+                  <div className="w-full h-1.5 bg-[#f0fff4] rounded-full overflow-hidden">
+                    <div
+                      className="h-full bg-[#003d29] transition-all duration-300"
+                      style={{ width: `${Math.max(10, ocrProgress.progress)}%` }}
+                    />
+                  </div>
+                </div>
+              )}
+
+              {/* Attached Document Card */}
+              {attachedDoc && !ocrLoading && (
+                <div className="p-3 bg-white rounded-xl border border-[#003d29]/20 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
+                  <div className="flex items-center gap-2.5 min-w-0">
+                    <div className="w-9 h-9 rounded-lg bg-[#c9fdd7] text-[#003d29] flex items-center justify-center shrink-0">
+                      <FileCheck className="w-4 h-4" />
+                    </div>
+                    <div className="min-w-0">
+                      <strong className="block text-xs font-bold text-[#003d29] truncate">
+                        {attachedDoc.name}
+                      </strong>
+                      <span className="block text-[10px] text-[#587366]">
+                        {attachedDoc.fileSize || "245 KB"} · Type: {attachedDoc.type.replace("_", " ")} · {attachedDoc.date}
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-2 shrink-0">
+                    <button
+                      type="button"
+                      onClick={() => setActiveDocPreview(attachedDoc)}
+                      className="px-2.5 py-1 bg-[#f0fff4] hover:bg-[#c9fdd7] text-[#003d29] border border-[#003d29]/15 rounded-lg text-[11px] font-bold transition-colors cursor-pointer"
+                    >
+                      Inspect OCR Text
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setAttachedDoc(null);
+                        setUploadedFileName("");
+                      }}
+                      className="p-1 text-red-500 hover:text-red-700 cursor-pointer"
+                      title="Remove attachment"
+                    >
+                      <X className="w-4 h-4" />
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* OCR Auto-Detected Confirmation Banner */}
+            {ocrAutoDetectedMsg && (
+              <div className="my-3 p-3 bg-[#c9fdd7] border border-[#347355]/30 rounded-xl text-xs font-bold text-[#003d29] flex items-center gap-2 animate-fade-in">
+                <CheckCircle2 className="w-4 h-4 text-[#347355] shrink-0" />
+                <span>{ocrAutoDetectedMsg}</span>
+              </div>
+            )}
+
+            <form onSubmit={handleAddHistorySubmit} className="mt-5 space-y-4">
               <div>
-                <label htmlFor="history-title" className="block text-xs font-bold text-[#003d29] mb-1">
-                  Title / Condition Name *
+                <label className="block text-xs font-bold text-[#003d29] mb-1">
+                  Title of Record *
                 </label>
                 <input
-                  id="history-title"
                   type="text"
                   required
-                  placeholder="e.g. Type 2 Diabetes follow-up / Penicillin allergy"
                   value={newTitle}
                   onChange={(e) => setNewTitle(e.target.value)}
-                  className="w-full px-3.5 py-2.5 text-xs sm:text-sm bg-[#f0fff4] border border-[#003d29]/20 rounded-xl focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#6bbf8c]"
+                  placeholder="e.g. Chest X-Ray Report, Blood Test CBC, Previous Rx"
+                  className="w-full px-3.5 py-2 text-xs sm:text-sm bg-[#f0fff4] border border-[#003d29]/20 rounded-xl focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#347355]"
                 />
               </div>
 
-              {/* Date & Doctor Grid */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
-                  <label htmlFor="history-date" className="block text-xs font-bold text-[#003d29] mb-1">
-                    Date
+                  <label className="block text-xs font-bold text-[#003d29] mb-1">
+                    Record Category
                   </label>
+                  <select
+                    value={newType}
+                    onChange={(e) => setNewType(e.target.value as any)}
+                    className="w-full px-3.5 py-2 text-xs bg-[#f0fff4] border border-[#003d29]/20 rounded-xl focus:bg-white focus:outline-none"
+                  >
+                    <option value="consultation">OPD Consultation</option>
+                    <option value="lab">Lab / Diagnostic Report</option>
+                    <option value="medication">Prescription</option>
+                    <option value="allergy">Allergy / Condition</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-[#003d29] mb-1">Date</label>
                   <input
-                    id="history-date"
                     type="date"
                     value={newDate}
                     onChange={(e) => setNewDate(e.target.value)}
-                    className="w-full px-3.5 py-2.5 text-xs sm:text-sm bg-[#f0fff4] border border-[#003d29]/20 rounded-xl focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#6bbf8c]"
+                    className="w-full px-3.5 py-2 text-xs bg-[#f0fff4] border border-[#003d29]/20 rounded-xl focus:bg-white focus:outline-none"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-bold text-[#003d29] mb-1">
+                    Doctor / Clinic Name
+                  </label>
+                  <input
+                    type="text"
+                    value={newDoctor}
+                    onChange={(e) => setNewDoctor(e.target.value)}
+                    placeholder="e.g. Dr. Rajesh Sharma"
+                    className="w-full px-3.5 py-2 text-xs bg-[#f0fff4] border border-[#003d29]/20 rounded-xl focus:bg-white focus:outline-none"
                   />
                 </div>
 
                 <div>
-                  <label htmlFor="history-doctor" className="block text-xs font-bold text-[#003d29] mb-1">
-                    Doctor / Specialist (Optional)
+                  <label className="block text-xs font-bold text-[#003d29] mb-1">
+                    Hospital / Diagnostic Lab
                   </label>
                   <input
-                    id="history-doctor"
                     type="text"
-                    placeholder="e.g. Dr. A. K. Verma"
-                    value={newDoctor}
-                    onChange={(e) => setNewDoctor(e.target.value)}
-                    className="w-full px-3.5 py-2.5 text-xs sm:text-sm bg-[#f0fff4] border border-[#003d29]/20 rounded-xl focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#6bbf8c]"
+                    value={newFacility}
+                    onChange={(e) => setNewFacility(e.target.value)}
+                    placeholder="e.g. Apex Diagnostics"
+                    className="w-full px-3.5 py-2 text-xs bg-[#f0fff4] border border-[#003d29]/20 rounded-xl focus:bg-white focus:outline-none"
                   />
                 </div>
               </div>
 
-              {/* Notes */}
               <div>
-                <label htmlFor="history-notes" className="block text-xs font-bold text-[#003d29] mb-1">
-                  Clinical Notes & Symptoms
-                </label>
+                <label className="block text-xs font-bold text-[#003d29] mb-1">Clinical Notes</label>
                 <textarea
-                  id="history-notes"
                   rows={3}
-                  placeholder="Mention prescribed medication, severity, advice, or recent readings..."
                   value={newNotes}
                   onChange={(e) => setNewNotes(e.target.value)}
-                  className="w-full px-3.5 py-2.5 text-xs sm:text-sm bg-[#f0fff4] border border-[#003d29]/20 rounded-xl focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#6bbf8c] resize-none"
+                  placeholder="Summary of findings, normal readings, or doctor advice..."
+                  className="w-full px-3.5 py-2 text-xs bg-[#f0fff4] border border-[#003d29]/20 rounded-xl focus:bg-white focus:outline-none resize-none"
                 />
               </div>
 
-              {/* Simulated Document Upload Dropzone */}
-              <div>
-                <label className="block text-xs font-bold text-[#003d29] mb-1">
-                  Attach Medical Document (PDF / JPEG)
-                </label>
-                <div
-                  onClick={() =>
-                    setUploadedFileName(
-                      uploadedFileName
-                        ? ""
-                        : `Prescription_Record_${Math.floor(1000 + Math.random() * 9000)}.pdf`
-                    )
-                  }
-                  className="p-4 border-2 border-dashed border-[#003d29]/25 hover:border-[#347355] rounded-xl bg-[#f0fff4] text-center cursor-pointer transition-colors"
-                >
-                  <Upload className="w-5 h-5 mx-auto text-[#347355] mb-1.5" />
-                  {uploadedFileName ? (
-                    <p className="text-xs font-bold text-[#003d29]">
-                      Attached: <span className="underline">{uploadedFileName}</span> (Click to remove)
-                    </p>
-                  ) : (
-                    <p className="text-xs text-[#587366]">
-                      <span className="font-bold text-[#003d29]">Click to attach sample report</span> or drag & drop here
-                    </p>
-                  )}
-                </div>
-              </div>
-
-              {/* Action Buttons */}
-              <div className="pt-3 flex items-center justify-end gap-3">
-                <button
-                  type="button"
-                  onClick={() => setActiveTab("overview")}
-                  className="px-4 py-2.5 text-xs font-bold text-[#587366] hover:text-[#003d29] cursor-pointer"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  className="px-5 py-2.5 bg-[#003d29] hover:bg-[#347355] text-[#f0fff4] rounded-xl text-xs sm:text-sm font-bold shadow-md shadow-[#003d29]/20 transition-all cursor-pointer"
-                >
-                  Save to ABHA Record
-                </button>
-              </div>
+              <button
+                type="submit"
+                className="w-full py-2.5 bg-[#003d29] hover:bg-[#347355] text-white rounded-xl text-xs font-bold cursor-pointer transition-colors shadow-sm"
+              >
+                Save Record to Timeline
+              </button>
             </form>
           </section>
         )}
 
-        {/* Tab View 4: Family Tree (Linked Members & Hereditary Health) */}
+        {/* Tab View 4: Connected Family Medical Tree with Pedigree Hierarchy & Add Member Option */}
         {activeTab === "family-tree" && (
           <section
             aria-label="Family Medical Tree"
-            className="p-5 sm:p-8 bg-white border border-[#003d29]/15 rounded-2xl shadow-sm animate-fade-in"
+            className="p-5 sm:p-8 bg-white border border-[#003d29]/15 rounded-2xl shadow-sm animate-fade-in space-y-6"
           >
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-6 border-b border-[#003d29]/10">
               <div>
                 <span className="text-[11px] font-bold uppercase tracking-wider text-[#347355]">
-                  Family Health Network
+                  {t("familyHealthNetwork")}
                 </span>
                 <h2 className="text-lg sm:text-xl font-bold text-[#003d29] tracking-tight mt-0.5">
-                  Family Medical Tree & Hereditary Profile
+                  {t("familyMedicalTree")}
                 </h2>
                 <p className="text-xs text-[#587366] mt-1">
-                  Track linked family ABHA accounts to identify hereditary patterns and coordinate care.
+                  {t("familyTreeSubtitle")}
                 </p>
               </div>
 
-              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-[#c9fdd7] text-[#003d29] text-xs font-bold border border-[#347355]/20 self-start sm:self-auto">
-                <ShieldCheck className="w-3.5 h-3.5 text-[#347355]" />
-                <span>Consent Linked (ABDM)</span>
-              </span>
+              <div className="flex flex-wrap items-center gap-2.5 self-start sm:self-auto">
+                <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-[#c9fdd7] text-[#003d29] text-xs font-bold border border-[#347355]/20">
+                  <ShieldCheck className="w-3.5 h-3.5 text-[#347355]" />
+                  <span>{t("consentLinkedAbdm")}</span>
+                </span>
+
+                {/* + Add Family Member Button */}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsAddMemberModalOpen(true);
+                    setConsentState("form");
+                  }}
+                  className="inline-flex items-center gap-1.5 px-3.5 py-1.5 bg-[#003d29] hover:bg-[#347355] text-white rounded-xl text-xs font-bold transition-all shadow-xs cursor-pointer"
+                >
+                  <UserPlus className="w-3.5 h-3.5 text-[#c9fdd7]" />
+                  <span>{t("addFamilyMember")}</span>
+                </button>
+              </div>
             </div>
 
-            {/* Hereditary Health Alert Banner */}
-            <div className="my-5 p-4 bg-[#f0fff4] border border-[#347355]/25 rounded-xl flex items-start gap-3">
+            {/* Hereditary Health Alert Banner for Shriram Vaidya */}
+            <div className="p-4 bg-[#f0fff4] border border-[#347355]/25 rounded-xl flex items-start gap-3">
               <HeartPulse className="w-5 h-5 text-[#347355] flex-shrink-0 mt-0.5" />
               <div className="text-xs text-[#092c20]">
                 <strong className="font-bold text-[#003d29] block">
-                  Family Health Hereditary Insight
+                  {t("hereditaryInsight")}
                 </strong>
-                <span>
-                  High blood pressure (Hypertension) and Diabetes are noted in 2 direct relatives (Father, Mother). Regular annual BP and fasting glucose screening is recommended for Priya.
-                </span>
+                <span>{t("hereditaryDesc")}</span>
               </div>
             </div>
 
-            {/* Family Members Grid */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 mt-6">
-              {/* Primary User Card (Self) */}
-              <div className="p-4 sm:p-5 rounded-xl bg-[#003d29] text-[#f0fff4] border border-[#003d29] shadow-sm relative flex flex-col justify-between">
-                <div>
-                  <div className="flex items-center justify-between">
-                    <span className="text-[10px] font-bold uppercase tracking-widest text-[#c9fdd7]">
-                      Self (Patient)
-                    </span>
-                    <span className="w-2.5 h-2.5 rounded-full bg-[#48bb78] ring-2 ring-white/20" />
-                  </div>
-                  <h3 className="text-base font-bold text-[#f0fff4] mt-2">
-                    {fullName}
-                  </h3>
-                  <p className="text-xs text-[#c9fdd7]/80">28y · Female · B+</p>
-                  <p className="text-[11px] text-[#f0fff4]/60 mt-1">
-                    ABHA: 14-1234-5678-4821
-                  </p>
+            {/* CONNECTED PEDIGREE TREE VIEW */}
+            <div className="p-6 bg-[#f0fff4]/50 border border-[#003d29]/15 rounded-2xl space-y-8 overflow-x-auto">
+              {/* Level 1: Generation 1 (Parents) */}
+              <div className="flex flex-col items-center">
+                <span className="text-[10px] font-bold uppercase tracking-wider text-[#587366] bg-white px-3 py-0.5 rounded-full border border-[#003d29]/15 mb-4">
+                  Generation I · Parents
+                </span>
+
+                <div className="flex flex-wrap items-center justify-center gap-6 relative">
+                  {parents.map((p) => (
+                    <div
+                      key={p.id}
+                      className="w-64 p-4 rounded-xl bg-white border border-[#003d29]/20 shadow-xs flex flex-col justify-between"
+                    >
+                      <div className="flex items-center justify-between mb-1.5">
+                        <span className="text-[10px] font-bold text-[#347355] bg-[#c9fdd7] px-2 py-0.5 rounded">
+                          {p.relation}
+                        </span>
+                        <span className="text-[10px] text-[#587366]">Blood: {p.bloodGroup}</span>
+                      </div>
+                      <h4 className="text-sm font-bold text-[#003d29]">{p.name}</h4>
+                      <p className="text-[11px] text-[#587366]">{p.age} years · {p.abhaId}</p>
+                      <div className="mt-2 flex flex-wrap gap-1">
+                        {p.conditions.map((c, i) => (
+                          <span key={i} className="text-[9px] font-bold bg-[#f0fff4] border border-[#003d29]/15 text-[#003d29] px-1.5 py-0.5 rounded">
+                            {c}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
                 </div>
 
-                <div className="mt-4 pt-3 border-t border-white/15 text-xs text-[#c9fdd7]">
-                  Active Queue Token: <strong>{tokenNumber}</strong>
-                </div>
+                {/* Connecting Line Down to Generation 2 */}
+                <div className="w-0.5 h-8 bg-[#347355] my-2" />
               </div>
 
-              {/* Linked Family Members */}
-              {familyMembers.map((member) => (
-                <div
-                  key={member.id}
-                  className="p-4 sm:p-5 rounded-xl bg-[#f0fff4] border border-[#003d29]/15 hover:bg-white hover:border-[#347355] transition-all shadow-xs flex flex-col justify-between"
-                >
-                  <div>
-                    <div className="flex items-center justify-between">
-                      <span className="text-[10px] font-bold uppercase tracking-widest text-[#347355] px-2 py-0.5 bg-white rounded-md border border-[#003d29]/10">
-                        {member.relation}
+              {/* Level 2: Generation 2 (Self: Shriram Vaidya + Spouse / Siblings) */}
+              <div className="flex flex-col items-center">
+                <span className="text-[10px] font-bold uppercase tracking-wider text-[#587366] bg-white px-3 py-0.5 rounded-full border border-[#003d29]/15 mb-4">
+                  Generation II · Current Lineage
+                </span>
+
+                <div className="flex flex-wrap items-center justify-center gap-6">
+                  {/* Highlighted Self Card (Shriram Vaidya) */}
+                  <div className="w-72 p-5 rounded-2xl bg-[#003d29] text-[#f0fff4] border-2 border-[#c9fdd7] shadow-lg relative transform hover:scale-[1.02] transition-transform">
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="text-[10px] font-bold uppercase tracking-widest text-[#003d29] bg-[#c9fdd7] px-2.5 py-0.5 rounded-md">
+                        {t("selfPatient")}
                       </span>
-                      <span className="text-[10px] text-[#587366] font-semibold">
-                        Blood: {member.bloodGroup}
-                      </span>
+                      <span className="w-2.5 h-2.5 rounded-full bg-[#48bb78] ring-2 ring-white/30" />
                     </div>
 
-                    <h3 className="text-base font-bold text-[#003d29] mt-2">
-                      {member.name}
-                    </h3>
-                    <p className="text-xs text-[#587366] mt-0.5">
-                      {member.age} years · Linked ABHA
-                    </p>
-                    <p className="text-[10px] text-[#587366] font-mono mt-0.5">
-                      {member.abhaId}
+                    <h4 className="text-base font-bold text-white">{fullName}</h4>
+                    <p className="text-xs text-[#c9fdd7]/80">29y · Male · Blood: B+</p>
+                    <p className="text-[10px] text-[#f0fff4]/60 font-mono mt-0.5">
+                      ABHA: 12-3456-7890-1234
                     </p>
 
-                    {/* Conditions Tags */}
-                    <div className="mt-3 flex flex-wrap gap-1">
-                      {member.conditions.map((cond, idx) => (
-                        <span
-                          key={idx}
-                          className="text-[10px] font-bold px-2 py-0.5 rounded bg-white text-[#003d29] border border-[#003d29]/10"
-                        >
-                          {cond}
-                        </span>
-                      ))}
+                    <div className="mt-3 pt-2.5 border-t border-white/15 flex items-center justify-between text-xs text-[#c9fdd7]">
+                      <span>Active Token: <strong>{tokenNumber}</strong></span>
+                      <span className="text-[10px] bg-white/20 px-2 py-0.5 rounded">Linked</span>
                     </div>
                   </div>
 
-                  <div className="mt-4 pt-3 border-t border-[#003d29]/10 flex items-center justify-between text-xs text-[#347355] font-semibold">
-                    <span>ABDM Sync: Active</span>
-                    <Check className="w-3.5 h-3.5 text-[#347355]" />
+                  {/* Siblings / Spouse */}
+                  {siblingsAndSpouse.map((s) => (
+                    <div
+                      key={s.id}
+                      className="w-64 p-4 rounded-xl bg-white border border-[#003d29]/20 shadow-xs flex flex-col justify-between"
+                    >
+                      <div className="flex items-center justify-between mb-1.5">
+                        <span className="text-[10px] font-bold text-[#347355] bg-[#c9fdd7] px-2 py-0.5 rounded">
+                          {s.relation}
+                        </span>
+                        <span className="text-[10px] text-[#587366]">Blood: {s.bloodGroup}</span>
+                      </div>
+                      <h4 className="text-sm font-bold text-[#003d29]">{s.name}</h4>
+                      <p className="text-[11px] text-[#587366]">{s.age} years · {s.abhaId}</p>
+                      <div className="mt-2 flex flex-wrap gap-1">
+                        {s.conditions.map((c, i) => (
+                          <span key={i} className="text-[9px] font-bold bg-[#f0fff4] border border-[#003d29]/15 text-[#003d29] px-1.5 py-0.5 rounded">
+                            {c}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+
+                {/* Connecting Line Down to Generation 3 */}
+                {children.length > 0 && <div className="w-0.5 h-8 bg-[#347355] my-2" />}
+              </div>
+
+              {/* Level 3: Generation 3 (Children) */}
+              {children.length > 0 && (
+                <div className="flex flex-col items-center">
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-[#587366] bg-white px-3 py-0.5 rounded-full border border-[#003d29]/15 mb-4">
+                    Generation III · Children
+                  </span>
+
+                  <div className="flex flex-wrap items-center justify-center gap-6">
+                    {children.map((c) => (
+                      <div
+                        key={c.id}
+                        className="w-64 p-4 rounded-xl bg-white border border-[#003d29]/20 shadow-xs flex flex-col justify-between"
+                      >
+                        <div className="flex items-center justify-between mb-1.5">
+                          <span className="text-[10px] font-bold text-[#347355] bg-[#c9fdd7] px-2 py-0.5 rounded">
+                            {c.relation}
+                          </span>
+                          <span className="text-[10px] text-[#587366]">Blood: {c.bloodGroup}</span>
+                        </div>
+                        <h4 className="text-sm font-bold text-[#003d29]">{c.name}</h4>
+                        <p className="text-[11px] text-[#587366]">{c.age} years · {c.abhaId}</p>
+                        <div className="mt-2 flex flex-wrap gap-1">
+                          {c.conditions.map((cond, i) => (
+                            <span key={i} className="text-[9px] font-bold bg-[#f0fff4] border border-[#003d29]/15 text-[#003d29] px-1.5 py-0.5 rounded">
+                              {cond}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                    ))}
                   </div>
                 </div>
-              ))}
+              )}
             </div>
           </section>
         )}
-
-        {/* Status notification */}
-        {statusMessage && (
-          <p
-            role="status"
-            aria-live="polite"
-            className="mt-6 text-center text-xs font-semibold text-[#003d29] bg-[#c9fdd7]/70 p-3 rounded-xl border border-[#347355]/20 animate-fade-in max-w-xl mx-auto"
-          >
-            {statusMessage}
-          </p>
-        )}
       </main>
 
-      {/* Interactive Scanner Modal (Doctor QR + Free OCR Document Scanner) */}
+      {/* Interactive Modal: Add Family Member with ABDM Consent Flow */}
+      {isAddMemberModalOpen && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          className="fixed inset-0 z-50 bg-black/65 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto"
+        >
+          <div className="w-full max-w-md bg-[#f0fff4] rounded-2xl p-6 border border-[#003d29]/20 shadow-2xl relative font-mono text-[#092c20]">
+            <button
+              type="button"
+              onClick={() => setIsAddMemberModalOpen(false)}
+              className="absolute top-4 right-4 text-[#587366] hover:text-[#003d29] p-1 rounded-lg cursor-pointer"
+            >
+              <X className="w-5 h-5" />
+            </button>
+
+            <div className="text-center mb-5">
+              <span className="text-[10px] uppercase font-bold tracking-wider text-[#347355] bg-[#c9fdd7] px-2.5 py-0.5 rounded-full border border-[#003d29]/15">
+                ABDM Family Link
+              </span>
+              <h3 className="text-base font-bold text-[#003d29] mt-1.5">
+                {t("addFamilyMember")}
+              </h3>
+              <p className="text-xs text-[#587366] mt-0.5">
+                Link relative&apos;s ABHA profile with consent to share health history.
+              </p>
+            </div>
+
+            {consentState === "form" && (
+              <form onSubmit={handleSendConsentRequest} className="space-y-3 text-xs">
+                <div>
+                  <label className="block font-bold text-[#003d29] mb-1">Relative&apos;s Full Name *</label>
+                  <input
+                    type="text"
+                    required
+                    value={newMemberName}
+                    onChange={(e) => setNewMemberName(e.target.value)}
+                    placeholder="e.g. Ramesh Vaidya / Ananya Vaidya"
+                    className="w-full px-3 py-2 bg-white border border-[#003d29]/20 rounded-xl outline-none focus:border-[#003d29]"
+                  />
+                </div>
+
+                <div className="grid grid-cols-2 gap-2.5">
+                  <div>
+                    <label className="block font-bold text-[#003d29] mb-1">Relationship *</label>
+                    <select
+                      value={newMemberRelation}
+                      onChange={(e) => setNewMemberRelation(e.target.value)}
+                      className="w-full px-3 py-2 bg-white border border-[#003d29]/20 rounded-xl outline-none"
+                    >
+                      <option value="Father">Father</option>
+                      <option value="Mother">Mother</option>
+                      <option value="Spouse">Spouse</option>
+                      <option value="Brother">Brother</option>
+                      <option value="Sister">Sister</option>
+                      <option value="Son">Son</option>
+                      <option value="Daughter">Daughter</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block font-bold text-[#003d29] mb-1">Age</label>
+                    <input
+                      type="number"
+                      value={newMemberAge}
+                      onChange={(e) => setNewMemberAge(Number(e.target.value))}
+                      className="w-full px-3 py-2 bg-white border border-[#003d29]/20 rounded-xl outline-none"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block font-bold text-[#003d29] mb-1">Relative&apos;s ABHA ID *</label>
+                  <input
+                    type="text"
+                    required
+                    value={newMemberAbha}
+                    onChange={(e) => setNewMemberAbha(e.target.value)}
+                    placeholder="e.g. 12-8832-1920-4412"
+                    className="w-full px-3 py-2 bg-white border border-[#003d29]/20 rounded-xl outline-none focus:border-[#003d29] font-mono"
+                  />
+                </div>
+
+                <div className="grid grid-cols-2 gap-2.5">
+                  <div>
+                    <label className="block font-bold text-[#003d29] mb-1">Blood Group</label>
+                    <select
+                      value={newMemberBlood}
+                      onChange={(e) => setNewMemberBlood(e.target.value)}
+                      className="w-full px-3 py-2 bg-white border border-[#003d29]/20 rounded-xl outline-none"
+                    >
+                      {["A+", "A-", "B+", "B-", "O+", "O-", "AB+", "AB-"].map((bg) => (
+                        <option key={bg} value={bg}>{bg}</option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block font-bold text-[#003d29] mb-1">Known Conditions</label>
+                    <input
+                      type="text"
+                      value={newMemberConditions}
+                      onChange={(e) => setNewMemberConditions(e.target.value)}
+                      placeholder="e.g. Hypertension, None"
+                      className="w-full px-3 py-2 bg-white border border-[#003d29]/20 rounded-xl outline-none"
+                    />
+                  </div>
+                </div>
+
+                <button
+                  type="submit"
+                  className="w-full mt-4 py-2.5 bg-[#003d29] hover:bg-[#347355] text-white rounded-xl font-bold cursor-pointer transition-colors shadow-sm flex items-center justify-center gap-2"
+                >
+                  <Send className="w-3.5 h-3.5 text-[#c9fdd7]" />
+                  <span>{t("sendConsentRequest")}</span>
+                </button>
+              </form>
+            )}
+
+            {consentState === "sending" && (
+              <div className="py-8 text-center space-y-3">
+                <Loader2 className="w-8 h-8 text-[#347355] animate-spin mx-auto" />
+                <p className="text-xs font-bold text-[#003d29]">Transmitting consent request via ABDM gateway...</p>
+              </div>
+            )}
+
+            {consentState === "request_sent" && (
+              <div className="py-5 text-center space-y-4">
+                <div className="w-12 h-12 rounded-full bg-amber-100 text-amber-800 mx-auto flex items-center justify-center">
+                  <ShieldCheck className="w-6 h-6 animate-pulse" />
+                </div>
+                <div className="space-y-1">
+                  <h4 className="text-sm font-bold text-[#003d29]">Consent Request Pending</h4>
+                  <p className="text-xs text-[#587366] max-w-xs mx-auto">
+                    {t("requestSent")}
+                  </p>
+                </div>
+
+                <div className="p-3 bg-white rounded-xl border border-[#003d29]/15 text-[11px] text-[#003d29] space-y-1 text-left">
+                  <div><strong>Member:</strong> {newMemberName} ({newMemberRelation})</div>
+                  <div><strong>ABHA:</strong> {newMemberAbha}</div>
+                  <div><strong>Scope:</strong> Hereditary medical profile & emergency consent</div>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={handleSimulateRelativeAccept}
+                  className="w-full py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-bold cursor-pointer transition-colors shadow-sm flex items-center justify-center gap-2"
+                >
+                  <Check className="w-4 h-4" />
+                  <span>{t("simulateAccept")}</span>
+                </button>
+              </div>
+            )}
+
+            {consentState === "accepted" && (
+              <div className="py-8 text-center space-y-3">
+                <div className="w-12 h-12 rounded-full bg-emerald-100 text-emerald-800 mx-auto flex items-center justify-center">
+                  <Check className="w-6 h-6 animate-bounce" />
+                </div>
+                <p className="text-sm font-bold text-[#003d29]">{memberSuccessMsg}</p>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* REAL WORKING DOCTOR DESK QR SCANNER MODAL (No OCR here - 100% focused on Doctor QR) */}
       {isScannerModalOpen && (
         <div
           role="dialog"
@@ -1131,219 +1756,265 @@ export const PatientDashboard: React.FC<PatientDashboardProps> = ({
           <div className="w-full max-w-md bg-[#f0fff4] rounded-2xl p-6 border border-[#003d29]/20 shadow-2xl relative font-mono text-[#092c20]">
             <button
               type="button"
-              onClick={() => setIsScannerModalOpen(false)}
+              onClick={() => {
+                handleStopCamera();
+                setIsScannerModalOpen(false);
+              }}
               className="absolute top-4 right-4 text-[#587366] hover:text-[#003d29] p-1 rounded-lg cursor-pointer"
-              aria-label="Close scanner"
             >
               <X className="w-5 h-5" />
             </button>
 
             <div className="text-center mb-4">
-              <span className="text-[10px] uppercase font-bold tracking-wider text-[#347355] bg-[#c9fdd7] px-2 py-0.5 rounded-full border border-[#003d29]/15">
-                Carelink Scanner
+              <span className="text-[10px] uppercase font-bold tracking-wider text-[#347355] bg-[#c9fdd7] px-2.5 py-0.5 rounded-full border border-[#003d29]/15">
+                Carelink OPD Room Scanner
               </span>
-              <h3 className="text-base font-bold text-[#003d29] mt-1.5">Scanner & Document OCR</h3>
+              <h3 className="text-base font-bold text-[#003d29] mt-1.5">
+                {t("scannerTitle")}
+              </h3>
               <p className="text-xs text-[#587366] mt-0.5">
-                Scan doctor&apos;s room QR or extract text from prescription / lab reports.
+                {t("scannerSubtitle")}
               </p>
             </div>
 
-            {/* Sub-tabs: Doctor QR vs Document OCR */}
-            <div className="flex rounded-xl bg-white border border-[#003d29]/15 p-1 mb-4">
-              <button
-                type="button"
-                onClick={() => setScannedResult(null)}
-                className={`flex-1 py-1.5 text-xs font-bold rounded-lg transition-all cursor-pointer ${
-                  !scannedResult ? "bg-[#003d29] text-[#f0fff4]" : "text-[#587366] hover:text-[#003d29]"
-                }`}
-              >
-                Doctor Desk QR
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  if (!scannedResult) {
-                    setScannedResult({ text: "", sample: true });
-                  }
-                }}
-                className={`flex-1 py-1.5 text-xs font-bold rounded-lg transition-all cursor-pointer ${
-                  scannedResult ? "bg-[#003d29] text-[#f0fff4]" : "text-[#587366] hover:text-[#003d29]"
-                }`}
-              >
-                Document OCR
-              </button>
-            </div>
-
-            {!scannedResult ? (
-              /* Option 1: Doctor QR Scanner */
-              <div>
-                <div className="relative aspect-video w-full bg-[#003d29] rounded-xl overflow-hidden flex items-center justify-center border-2 border-dashed border-[#6bbf8c]">
-                  <div
-                    className={`w-40 h-32 border-2 rounded-lg relative flex flex-col items-center justify-center transition-all ${
-                      isScanSuccess
-                        ? "border-[#48bb78] bg-[#48bb78]/20 text-[#c9fdd7]"
-                        : "border-[#c9fdd7] animate-pulse text-[#c9fdd7]/60"
-                    }`}
-                  >
-                    {isScanSuccess ? (
-                      <>
-                        <Check className="w-10 h-10 text-[#48bb78] mb-1 animate-bounce" />
-                        <span className="text-xs font-bold text-white text-center">
-                          Verified: Dr. Ananya Kulkarni!
+            <div className="space-y-3">
+              {scannedDoctor ? (
+                /* Verified Doctor Card & Case Routing Options */
+                <div className="space-y-3 animate-fade-in">
+                  <div className="p-4 bg-white rounded-xl border-2 border-[#347355] shadow-sm space-y-2">
+                    <div className="flex items-start justify-between gap-2">
+                      <div>
+                        <span className="inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider text-emerald-800 bg-emerald-100 px-2 py-0.5 rounded-md border border-emerald-300 mb-1">
+                          <Check className="w-3 h-3 text-emerald-700" />
+                          <span>{t("verifiedDoctorDesk")}</span>
                         </span>
-                        <span className="text-[10px] text-[#c9fdd7]">OPD-DEMOCARE-3</span>
-                      </>
-                    ) : (
-                      <>
-                        <Camera className="w-8 h-8 text-[#6bbf8c]" />
-                        <span className="text-[10px] text-[#c9fdd7] font-semibold mt-2">
-                          Align QR inside box
-                        </span>
-                      </>
-                    )}
+                        <h4 className="text-sm font-bold text-[#003d29]">
+                          {scannedDoctor.name}
+                        </h4>
+                        <p className="text-[11px] text-[#587366]">
+                          {scannedDoctor.department} · {scannedDoctor.hospital}
+                        </p>
+                        <p className="text-[11px] font-bold text-[#347355] mt-0.5">
+                          Location: {scannedDoctor.roomNumber}
+                        </p>
+                      </div>
+                      <span className="font-mono text-[10px] font-bold bg-[#003d29] text-[#c9fdd7] px-2 py-0.5 rounded">
+                        {scannedDoctor.qrCodeToken}
+                      </span>
+                    </div>
                   </div>
-                </div>
 
-                {!isScanSuccess ? (
+                  {/* Active/Pending Case Check */}
+                  {(() => {
+                    const activeCase =
+                      consultations.find((c) => c.status === "Waiting") || latestConsultation;
+                    if (activeCase && activeCase.status !== "Completed") {
+                      return (
+                        <div className="p-3 bg-white/80 rounded-xl border border-[#003d29]/15 space-y-2">
+                          <div className="flex items-center justify-between text-[11px]">
+                            <span className="font-bold text-[#003d29]">
+                              Existing Case: Token {activeCase.tokenNumber}
+                            </span>
+                            <span className="text-[10px] text-[#587366]">
+                              {activeCase.pathway === "ayush" ? "AYUSH" : "General Medicine"}
+                            </span>
+                          </div>
+                          <p className="text-xs text-[#587366] italic truncate">
+                            &ldquo;{activeCase.chiefComplaint}&rdquo;
+                          </p>
+
+                          {/* Option A: Link & Check-in Existing Case */}
+                          <button
+                            type="button"
+                            onClick={() => handleCheckInExistingCase(activeCase.id, scannedDoctor)}
+                            className="w-full py-2.5 px-3 bg-[#003d29] hover:bg-[#347355] text-[#f0fff4] rounded-xl text-xs font-bold transition-all cursor-pointer shadow-sm flex items-center justify-center gap-2"
+                          >
+                            <Check className="w-4 h-4 text-[#c9fdd7]" />
+                            <span>{t("checkInExistingCase")} (Token {activeCase.tokenNumber})</span>
+                          </button>
+
+                          {/* Option B: Create New Case for this Doctor */}
+                          <button
+                            type="button"
+                            onClick={() => handleStartNewCaseForScannedDoctor(scannedDoctor)}
+                            className="w-full py-2 px-3 bg-white hover:bg-[#c9fdd7]/40 text-[#003d29] border border-[#003d29]/20 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-1.5"
+                          >
+                            <Plus className="w-3.5 h-3.5" />
+                            <span>{t("startNewCaseForDoctor")}</span>
+                          </button>
+                        </div>
+                      );
+                    } else {
+                      return (
+                        <div className="p-3 bg-white/80 rounded-xl border border-[#003d29]/15 space-y-2.5 text-center">
+                          <p className="text-xs text-[#587366]">
+                            No pending case found. Start a new consultation for <strong>{scannedDoctor.name}</strong>.
+                          </p>
+                          <button
+                            type="button"
+                            onClick={() => handleStartNewCaseForScannedDoctor(scannedDoctor)}
+                            className="w-full py-2.5 px-3 bg-[#003d29] hover:bg-[#347355] text-[#f0fff4] rounded-xl text-xs font-bold transition-all cursor-pointer shadow-sm flex items-center justify-center gap-2"
+                          >
+                            <Stethoscope className="w-4 h-4 text-[#c9fdd7]" />
+                            <span>Start Case for {scannedDoctor.name}</span>
+                          </button>
+                        </div>
+                      );
+                    }
+                  })()}
+
                   <button
                     type="button"
                     onClick={() => {
-                      setIsScanSuccess(true);
-                      setStatusMessage("QR verified! Connected to Dr. Ananya Kulkarni (DemoCare Hospital).");
-                      setTimeout(() => setIsScannerModalOpen(false), 1600);
+                      setScannedDoctor(null);
+                      setIsScanSuccess(false);
+                      setQrScanStatusMsg("");
                     }}
-                    className="mt-4 w-full py-2.5 bg-[#347355] text-[#f0fff4] rounded-xl text-xs font-bold cursor-pointer hover:bg-[#003d29] transition-colors shadow-xs"
+                    className="w-full py-1.5 text-center text-[11px] text-[#587366] hover:text-[#003d29] underline underline-offset-2 cursor-pointer"
                   >
-                    Simulate Scan (Dr. Ananya Kulkarni - OPD 3)
+                    {t("scanDifferentDoctor")}
                   </button>
-                ) : (
-                  <p className="mt-3 text-center text-xs font-bold text-[#347355]">
-                    Connected to Dr. Ananya Kulkarni&apos;s queue!
-                  </p>
-                )}
-              </div>
-            ) : (
-              /* Option 2: OCR Document Scanner */
-              <div className="space-y-3">
-                <div className="p-3 bg-white rounded-xl border border-[#003d29]/15">
-                  <div className="flex items-center justify-between mb-2">
-                    <span className="text-xs font-bold text-[#003d29]">Free Client-Side OCR</span>
-                    <span className="text-[10px] text-[#347355] font-semibold bg-[#c9fdd7] px-2 py-0.5 rounded">
-                      Tesseract.js Engine
-                    </span>
-                  </div>
-
-                  <div className="grid grid-cols-2 gap-2">
-                    <button
-                      type="button"
-                      onClick={async () => {
-                        setOcrLoading(true);
-                        setScannerSuccessMsg("");
-                        try {
-                          const res = await runOcrOnFile("sample-rx-1", (p, s) =>
-                            setOcrProgress({ progress: p, status: s })
-                          );
-                          setScannedResult({ ...res, name: "Dr_Sharma_Prescription.png", type: "prescription" });
-                        } finally {
-                          setOcrLoading(false);
-                        }
-                      }}
-                      disabled={ocrLoading}
-                      className="p-2 rounded-lg bg-[#f0fff4] hover:bg-[#c9fdd7] border border-[#003d29]/15 text-[11px] font-bold text-[#003d29] cursor-pointer text-left disabled:opacity-50"
-                    >
-                      <FileCheck className="w-3.5 h-3.5 text-[#347355] mb-1" />
-                      <span>Test Prescription OCR</span>
-                    </button>
-
-                    <button
-                      type="button"
-                      onClick={async () => {
-                        setOcrLoading(true);
-                        setScannerSuccessMsg("");
-                        try {
-                          const res = await runOcrOnFile("sample-lab-1", (p, s) =>
-                            setOcrProgress({ progress: p, status: s })
-                          );
-                          setScannedResult({ ...res, name: "Apex_CBC_Report.pdf", type: "lab_report" });
-                        } finally {
-                          setOcrLoading(false);
-                        }
-                      }}
-                      disabled={ocrLoading}
-                      className="p-2 rounded-lg bg-[#f0fff4] hover:bg-[#c9fdd7] border border-[#003d29]/15 text-[11px] font-bold text-[#003d29] cursor-pointer text-left disabled:opacity-50"
-                    >
-                      <FileText className="w-3.5 h-3.5 text-[#347355] mb-1" />
-                      <span>Test CBC Lab OCR</span>
-                    </button>
-                  </div>
                 </div>
+              ) : (
+                /* Viewfinder & Doctor Demonstration Presets */
+                <div className="space-y-3">
+                  {/* Camera Viewfinder with Scan Laser */}
+                  <div className="relative aspect-video w-full bg-[#003d29] rounded-xl overflow-hidden flex items-center justify-center border-2 border-dashed border-[#6bbf8c]">
+                    <video
+                      ref={videoRef}
+                      autoPlay
+                      playsInline
+                      muted
+                      className={`absolute inset-0 w-full h-full object-cover ${
+                        isCameraActive ? "block" : "hidden"
+                      }`}
+                    />
 
-                {ocrLoading && (
-                  <div className="p-3 rounded-lg bg-[#c9fdd7]/40 border border-[#003d29]/10">
-                    <div className="flex items-center justify-between text-[11px] text-[#003d29] font-bold mb-1">
-                      <span>{ocrProgress.status || "Extracting text..."}</span>
-                      <span>{ocrProgress.progress}%</span>
-                    </div>
-                    <div className="w-full h-1.5 bg-[#003d29]/10 rounded-full overflow-hidden">
-                      <div
-                        className="h-full bg-[#003d29] transition-all duration-200"
-                        style={{ width: `${ocrProgress.progress}%` }}
-                      />
-                    </div>
-                  </div>
-                )}
+                    {/* Animated Scanning Laser Line */}
+                    <div className="pointer-events-none absolute inset-x-0 h-0.5 bg-[#48bb78] shadow-[0_0_12px_#48bb78] animate-pulse z-10" />
 
-                {scannedResult?.text && (
-                  <div className="space-y-2">
-                    <div className="p-2.5 bg-white rounded-xl border border-[#003d29]/15 max-h-36 overflow-y-auto text-[11px]">
-                      <span className="text-[10px] font-bold uppercase tracking-wider text-[#347355] block mb-1">
-                        OCR Extracted Output:
+                    <div className="w-40 h-32 border-2 border-[#c9fdd7] rounded-lg relative flex flex-col items-center justify-center animate-pulse text-[#c9fdd7]/70 z-10 bg-black/20">
+                      <Camera className="w-8 h-8 text-[#6bbf8c]" />
+                      <span className="text-[10px] text-[#c9fdd7] font-semibold mt-2 text-center px-1">
+                        {t("alignDoctorQr")}
                       </span>
-                      <pre className="whitespace-pre-wrap font-mono text-[#092c20]">
-                        {scannedResult.text}
-                      </pre>
                     </div>
 
-                    {scannerSuccessMsg ? (
-                      <div className="p-2 rounded-lg bg-[#c9fdd7] border border-[#347355]/30 text-xs font-bold text-[#003d29] flex items-center gap-1.5">
-                        <Check className="w-4 h-4 text-[#347355]" />
-                        <span>{scannerSuccessMsg}</span>
-                      </div>
-                    ) : (
+                    {!isCameraActive && (
                       <button
                         type="button"
-                        onClick={() => {
-                          demoStore.addDocumentToPatientTimeline({
-                            id: `doc-${Date.now()}`,
-                            name: scannedResult.name || "Scanned_Medical_Report.pdf",
-                            type: scannedResult.type || "prescription",
-                            date: new Date().toLocaleDateString("en-GB"),
-                            ocrText: scannedResult.text,
-                            fileSize: "240 KB",
-                          });
-                          setScannerSuccessMsg("Document saved & attached to your Health Timeline!");
-                          setTimeout(() => {
-                            setIsScannerModalOpen(false);
-                            setActiveTab("timeline");
-                          }, 1400);
-                        }}
-                        className="w-full py-2 bg-[#003d29] hover:bg-[#347355] text-[#f0fff4] rounded-xl text-xs font-bold cursor-pointer transition-colors shadow-xs flex items-center justify-center gap-1.5"
+                        onClick={handleStartCamera}
+                        className="absolute bottom-2 right-2 px-2.5 py-1 bg-white/20 hover:bg-white/30 text-white rounded-lg text-[10px] font-bold backdrop-blur-xs flex items-center gap-1 z-20 cursor-pointer"
                       >
-                        <Check className="w-3.5 h-3.5 text-[#c9fdd7]" />
-                        <span>Attach Document to Timeline</span>
+                        <Video className="w-3 h-3 text-[#c9fdd7]" />
+                        <span>Live Camera</span>
                       </button>
                     )}
                   </div>
-                )}
-              </div>
-            )}
+
+                  {/* Manual Code Input Form */}
+                  <form
+                    onSubmit={(e) => {
+                      e.preventDefault();
+                      if (qrCodeInput.trim()) {
+                        handleScanDoctorCode(qrCodeInput.trim());
+                      }
+                    }}
+                    className="flex gap-2"
+                  >
+                    <input
+                      type="text"
+                      value={qrCodeInput}
+                      onChange={(e) => setQrCodeInput(e.target.value)}
+                      placeholder={t("enterRoomCode")}
+                      className="flex-1 px-3 py-2 text-xs bg-white border border-[#003d29]/20 rounded-xl outline-none focus:border-[#003d29] text-[#003d29] placeholder-[#587366]/60 font-mono"
+                    />
+                    <button
+                      type="submit"
+                      className="px-3.5 py-2 bg-[#003d29] hover:bg-[#347355] text-[#f0fff4] rounded-xl text-xs font-bold cursor-pointer transition-colors shadow-xs"
+                    >
+                      {t("verifyQr")}
+                    </button>
+                  </form>
+
+                  {/* Quick 1-Click Doctor Presets (Demonstration Target) */}
+                  <div className="space-y-1.5 pt-1">
+                    <span className="text-[10px] font-bold uppercase tracking-wider text-[#587366] block">
+                      {t("quickTestPresets")}
+                    </span>
+
+                    {/* Dr. Ananya Kulkarni Room 3 */}
+                    <button
+                      type="button"
+                      onClick={() => handleScanDoctorCode("OPD-DEMOCARE-3")}
+                      className="w-full text-left p-2.5 rounded-xl bg-white hover:bg-[#c9fdd7]/50 border-2 border-[#347355]/30 text-xs font-bold text-[#003d29] transition-all cursor-pointer flex items-center justify-between shadow-2xs group"
+                    >
+                      <div>
+                        <span className="block text-[#003d29] group-hover:text-[#347355]">
+                          ⚡ Dr. Ananya Kulkarni (General Medicine)
+                        </span>
+                        <span className="block text-[10px] text-[#587366] font-normal">
+                          OPD Room 3 · DemoCare Hospital
+                        </span>
+                      </div>
+                      <span className="font-mono text-[10px] bg-[#003d29] text-[#c9fdd7] px-2 py-0.5 rounded">
+                        OPD-DEMOCARE-3
+                      </span>
+                    </button>
+
+                    {/* Dr. Rajesh Rao Room 4 */}
+                    <button
+                      type="button"
+                      onClick={() => handleScanDoctorCode("DOC-OPD4-RR-4821")}
+                      className="w-full text-left p-2 rounded-xl bg-white hover:bg-[#c9fdd7]/40 border border-[#003d29]/15 text-xs font-bold text-[#003d29] transition-all cursor-pointer flex items-center justify-between"
+                    >
+                      <div>
+                        <span className="block">Dr. Rajesh Rao (Pulmonology)</span>
+                        <span className="block text-[10px] text-[#587366] font-normal">
+                          OPD Room 4 · Carelink Central OPD
+                        </span>
+                      </div>
+                      <span className="font-mono text-[10px] bg-[#c9fdd7] text-[#003d29] px-2 py-0.5 rounded">
+                        DOC-OPD4-RR-4821
+                      </span>
+                    </button>
+
+                    {/* Dr. Meera Nambiar Room 1 */}
+                    <button
+                      type="button"
+                      onClick={() => handleScanDoctorCode("AYUSH-HOLISTIC-1")}
+                      className="w-full text-left p-2 rounded-xl bg-white hover:bg-[#c9fdd7]/40 border border-[#003d29]/15 text-xs font-bold text-[#003d29] transition-all cursor-pointer flex items-center justify-between"
+                    >
+                      <div>
+                        <span className="block">Dr. Meera Nambiar (AYUSH Holistic)</span>
+                        <span className="block text-[10px] text-[#587366] font-normal">
+                          OPD Room 1 · Carelink Holistic Center
+                        </span>
+                      </div>
+                      <span className="font-mono text-[10px] bg-[#c9fdd7] text-[#003d29] px-2 py-0.5 rounded">
+                        AYUSH-HOLISTIC-1
+                      </span>
+                    </button>
+                  </div>
+
+                  {qrScanStatusMsg && (
+                    <p className="text-center text-[11px] font-bold text-[#347355] bg-[#c9fdd7]/70 p-2 rounded-lg animate-fade-in">
+                      {qrScanStatusMsg}
+                    </p>
+                  )}
+                </div>
+              )}
+            </div>
 
             <button
               type="button"
-              onClick={() => setIsScannerModalOpen(false)}
+              onClick={() => {
+                handleStopCamera();
+                setIsScannerModalOpen(false);
+              }}
               className="mt-3 w-full py-2 text-[#587366] hover:text-[#003d29] text-xs font-bold cursor-pointer text-center"
             >
-              Close
+              {t("close")}
             </button>
           </div>
         </div>
@@ -1353,9 +2024,14 @@ export const PatientDashboard: React.FC<PatientDashboardProps> = ({
       {isCaseIntakeOpen && (
         <CaseIntake
           patientName={fullName}
-          onClose={() => setIsCaseIntakeOpen(false)}
+          assignedDoctor={selectedDoctorForNewCase}
+          onClose={() => {
+            setIsCaseIntakeOpen(false);
+            setSelectedDoctorForNewCase(null);
+          }}
           onComplete={(cons) => {
             setIsCaseIntakeOpen(false);
+            setSelectedDoctorForNewCase(null);
             setPatientData(demoStore.getPatient());
             setConsultations(demoStore.getConsultations());
             if (onViewSummaryClick) {
@@ -1365,10 +2041,101 @@ export const PatientDashboard: React.FC<PatientDashboardProps> = ({
         />
       )}
 
-      {/* 🚀 Persistent Bottom Navigation Bar (Requested) */}
+      {/* Attached Document & OCR Text Modal */}
+      {activeDocPreview && (
+        <div className="fixed inset-0 bg-[#003d29]/70 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-fade-in">
+          <div className="bg-white rounded-3xl max-w-lg w-full p-5 sm:p-6 shadow-2xl border border-[#003d29]/20 max-h-[90vh] flex flex-col">
+            <div className="flex items-center justify-between pb-3 border-b border-[#003d29]/10">
+              <div className="flex items-center gap-2.5">
+                <div className="p-2 rounded-xl bg-[#c9fdd7] text-[#003d29]">
+                  <FileText className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-sm sm:text-base font-bold text-[#003d29] truncate max-w-[240px] sm:max-w-xs">
+                    {activeDocPreview.name}
+                  </h3>
+                  <div className="flex items-center gap-2 mt-0.5">
+                    <span className="text-[10px] font-bold px-2 py-0.5 bg-[#f0fff4] text-[#347355] border border-[#003d29]/10 rounded capitalize">
+                      {activeDocPreview.type.replace("_", " ")}
+                    </span>
+                    <span className="text-[10px] text-[#587366]">{activeDocPreview.date}</span>
+                    {activeDocPreview.fileSize && (
+                      <span className="text-[10px] text-[#587366]">· {activeDocPreview.fileSize}</span>
+                    )}
+                  </div>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setActiveDocPreview(null)}
+                className="p-1.5 rounded-full hover:bg-[#e8efea] text-[#587366] hover:text-[#003d29] transition-colors cursor-pointer"
+                aria-label="Close document modal"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="overflow-y-auto flex-1 py-4 space-y-4">
+              {/* Document Image Preview if available */}
+              {activeDocPreview.previewUrl && (
+                <div className="rounded-xl overflow-hidden border border-[#003d29]/15 bg-neutral-100 flex items-center justify-center max-h-56">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={activeDocPreview.previewUrl}
+                    alt={activeDocPreview.name}
+                    className="max-h-56 object-contain w-auto"
+                  />
+                </div>
+              )}
+
+              {/* ABDM Verified Badge */}
+              <div className="flex items-center gap-2 p-2.5 rounded-xl bg-[#f0fff4] border border-[#003d29]/10 text-xs text-[#003d29]">
+                <ShieldCheck className="w-4 h-4 text-[#347355] shrink-0" />
+                <span className="text-[11px] font-medium">
+                  ABDM Verified Health Record · Linked to ABHA locker
+                </span>
+              </div>
+
+              {/* OCR Extracted Text Section */}
+              <div className="rounded-xl border border-[#003d29]/15 bg-[#f8faf8] p-3.5 space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold text-[#003d29] flex items-center gap-1.5">
+                    <Sparkles className="w-3.5 h-3.5 text-[#347355]" />
+                    <span>Extracted OCR Transcript</span>
+                  </span>
+                  <span className="text-[10px] font-bold text-[#347355] bg-[#c9fdd7] px-2 py-0.5 rounded">
+                    Tesseract Engine
+                  </span>
+                </div>
+                {activeDocPreview.ocrText ? (
+                  <pre className="text-xs font-mono text-[#092c20] bg-white p-3 rounded-lg border border-[#003d29]/10 max-h-48 overflow-y-auto whitespace-pre-wrap leading-relaxed">
+                    {activeDocPreview.ocrText}
+                  </pre>
+                ) : (
+                  <p className="text-xs text-[#587366] italic bg-white p-3 rounded-lg border border-[#003d29]/10">
+                    No OCR transcript text extracted for this record.
+                  </p>
+                )}
+              </div>
+            </div>
+
+            <div className="pt-3 border-t border-[#003d29]/10 flex items-center justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setActiveDocPreview(null)}
+                className="px-4 py-2 bg-[#003d29] hover:bg-[#347355] text-[#f0fff4] rounded-xl text-xs font-bold transition-all cursor-pointer shadow-xs"
+              >
+                {t("close")}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Persistent Bottom Navigation Bar - Fixed on Mobile */}
       <nav
         aria-label="Patient Bottom Navigation"
-        className="fixed bottom-0 left-0 right-0 z-40 bg-[#003d29] border-t border-[#002619] shadow-[0_-8px_24px_rgba(0,61,41,0.22)] py-2 px-3 sm:px-6"
+        className="fixed-bottom-nav bg-[#003d29] border-t border-[#002619] shadow-[0_-8px_24px_rgba(0,61,41,0.22)] py-2 px-3 sm:px-6"
       >
         <div className="max-w-md sm:max-w-lg md:max-w-xl mx-auto flex items-center justify-between">
           {/* Bottom Nav Item 1: Overview */}
@@ -1382,7 +2149,7 @@ export const PatientDashboard: React.FC<PatientDashboardProps> = ({
             }`}
           >
             <LayoutDashboard className="w-4 h-4 sm:w-5 sm:h-5" />
-            <span className="text-[10px] sm:text-[11px] leading-tight">Overview</span>
+            <span className="text-[10px] sm:text-[11px] leading-tight">{t("overview")}</span>
             {activeTab === "overview" && (
               <span className="w-1.5 h-1.5 rounded-full bg-[#c9fdd7] mt-0.5" />
             )}
@@ -1399,7 +2166,7 @@ export const PatientDashboard: React.FC<PatientDashboardProps> = ({
             }`}
           >
             <Clock className="w-4 h-4 sm:w-5 sm:h-5" />
-            <span className="text-[10px] sm:text-[11px] leading-tight">Timeline</span>
+            <span className="text-[10px] sm:text-[11px] leading-tight">{t("timeline")}</span>
             {activeTab === "timeline" && (
               <span className="w-1.5 h-1.5 rounded-full bg-[#c9fdd7] mt-0.5" />
             )}
@@ -1416,7 +2183,7 @@ export const PatientDashboard: React.FC<PatientDashboardProps> = ({
               <QrCode className="w-6 h-6 sm:w-7 sm:h-7 stroke-[2.4]" />
             </div>
             <span className="text-[10px] sm:text-[11px] font-bold text-[#c9fdd7] mt-0.5">
-              Scanner
+              {t("scanner")}
             </span>
           </button>
 
@@ -1431,7 +2198,7 @@ export const PatientDashboard: React.FC<PatientDashboardProps> = ({
             }`}
           >
             <PlusCircle className="w-4 h-4 sm:w-5 sm:h-5" />
-            <span className="text-[10px] sm:text-[11px] leading-tight">Add History</span>
+            <span className="text-[10px] sm:text-[11px] leading-tight">{t("addHistory")}</span>
             {activeTab === "add-history" && (
               <span className="w-1.5 h-1.5 rounded-full bg-[#c9fdd7] mt-0.5" />
             )}
@@ -1448,7 +2215,7 @@ export const PatientDashboard: React.FC<PatientDashboardProps> = ({
             }`}
           >
             <Users className="w-4 h-4 sm:w-5 sm:h-5" />
-            <span className="text-[10px] sm:text-[11px] leading-tight">Family Tree</span>
+            <span className="text-[10px] sm:text-[11px] leading-tight">{t("familyTree")}</span>
             {activeTab === "family-tree" && (
               <span className="w-1.5 h-1.5 rounded-full bg-[#c9fdd7] mt-0.5" />
             )}

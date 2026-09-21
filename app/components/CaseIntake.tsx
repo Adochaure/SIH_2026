@@ -20,18 +20,20 @@ import {
   Loader2,
   Info,
 } from "lucide-react";
-import { demoStore, AttachedDocument, ConsultationRecord } from "../lib/demoStore";
+import { demoStore, AttachedDocument, ConsultationRecord, DoctorProfile } from "../lib/demoStore";
 import { runOcrOnFile, SAMPLE_DOCUMENTS } from "../lib/ocrService";
 import { AdaptiveQuestionResponse } from "../api/ai/next-question/route";
 
 export interface CaseIntakeProps {
   patientName?: string;
+  assignedDoctor?: DoctorProfile | null;
   onClose: () => void;
   onComplete: (consultation: ConsultationRecord) => void;
 }
 
 export const CaseIntake: React.FC<CaseIntakeProps> = ({
   patientName = "Shriram Vaidya",
+  assignedDoctor = null,
   onClose,
   onComplete,
 }) => {
@@ -63,6 +65,16 @@ export const CaseIntake: React.FC<CaseIntakeProps> = ({
   // Final Summary State
   const [summaryLoading, setSummaryLoading] = useState(false);
   const [aiSummary, setAiSummary] = useState<any>(null);
+
+  // Emergency Triage State
+  const [emergencyAlert, setEmergencyAlert] = useState<{
+    title: string;
+    reason: string;
+    severity?: string;
+    actionRecommended?: string;
+  } | null>(null);
+  const [showEmergencyModal, setShowEmergencyModal] = useState(false);
+  const [isEmergencyConfirmed, setIsEmergencyConfirmed] = useState(false);
 
   // Initialize Speech Recognition
   useEffect(() => {
@@ -185,6 +197,20 @@ export const CaseIntake: React.FC<CaseIntakeProps> = ({
 
       if (res.ok) {
         const data = await res.json();
+
+        // Check for Emergency Red-Flags
+        if (data.isEmergency && !isEmergencyConfirmed) {
+          setEmergencyAlert(
+            data.emergencyDetails || {
+              title: "Potential Acute Emergency Red-Flag",
+              reason: "Reported symptom combination requires urgent medical evaluation.",
+              actionRecommended: "Immediate Emergency Department evaluation or Call 108.",
+            }
+          );
+          setShowEmergencyModal(true);
+          setIsEmergencyConfirmed(true);
+        }
+
         if (data.isComplete) {
           generateSummary(currentAnsList);
           return;
@@ -232,6 +258,52 @@ export const CaseIntake: React.FC<CaseIntakeProps> = ({
     }
   };
 
+  const handleFastTrackEmergency = () => {
+    setShowEmergencyModal(false);
+    const patient = demoStore.getPatient();
+    const emergencySummary = {
+      chiefComplaint: complaint,
+      hpi: `EMERGENCY ALERT: Patient reports acute symptom combination: "${complaint}". Red-flag safety protocol triggered immediate triage escalation.`,
+      duration: "Acute",
+      severity: "CRITICAL / EMERGENCY",
+      associatedSymptoms: answers.map((a) => `${a.question}: ${a.answer}`),
+      redFlags: [`EMERGENCY: ${emergencyAlert?.title || "Critical red-flag symptom pattern"}`],
+      pathwayNotes: "Priority emergency fast-track triage. Immediate clinical evaluation required.",
+      disclaimer: "Emergency triage escalation triggered by Carelink AI red-flag safety protocol.",
+    };
+
+    const newConsultation = demoStore.createConsultation({
+      patientId: patient.id,
+      patientName: patient.name,
+      abhaId: patient.abhaId,
+      age: patient.age,
+      gender: patient.gender,
+      contact: patient.mobile,
+      pathway,
+      chiefComplaint: `🚨 [EMERGENCY] ${complaint}`,
+      answers,
+      aiSummary: emergencySummary,
+      attachedDocuments: attachedDocs,
+      doctorId: assignedDoctor?.id,
+      doctorQrCode: assignedDoctor?.qrCodeToken,
+      doctorName: assignedDoctor?.name,
+      doctorHospital: assignedDoctor?.hospital,
+      doctorDepartment: assignedDoctor?.department,
+      checkInStatus: assignedDoctor ? "checked_in" : "pending_qr",
+      qrScannedAt: assignedDoctor
+        ? new Date().toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" })
+        : undefined,
+      isEmergency: true,
+      emergencyDetails: emergencyAlert || undefined,
+    });
+
+    attachedDocs.forEach((doc) => {
+      demoStore.addDocumentToPatientTimeline(doc);
+    });
+
+    onComplete(newConsultation);
+  };
+
   const generateSummary = async (finalAnswers: { question: string; answer: string }[]) => {
     setStep("summary");
     setSummaryLoading(true);
@@ -250,6 +322,10 @@ export const CaseIntake: React.FC<CaseIntakeProps> = ({
       if (res.ok) {
         const data = await res.json();
         setAiSummary(data);
+        if (data.isEmergency && !isEmergencyConfirmed) {
+          setIsEmergencyConfirmed(true);
+          setEmergencyAlert(data.emergencyDetails);
+        }
       }
     } catch (err) {
       console.error("Summary error:", err);
@@ -260,6 +336,7 @@ export const CaseIntake: React.FC<CaseIntakeProps> = ({
 
   const handleConfirmAndGetToken = () => {
     const patient = demoStore.getPatient();
+    const isEmerg = isEmergencyConfirmed || Boolean(aiSummary?.isEmergency);
     const newConsultation = demoStore.createConsultation({
       patientId: patient.id,
       patientName: patient.name,
@@ -268,7 +345,7 @@ export const CaseIntake: React.FC<CaseIntakeProps> = ({
       gender: patient.gender,
       contact: patient.mobile,
       pathway,
-      chiefComplaint: complaint,
+      chiefComplaint: isEmerg ? `🚨 [EMERGENCY] ${complaint}` : complaint,
       answers,
       aiSummary: aiSummary || {
         chiefComplaint: complaint,
@@ -277,10 +354,19 @@ export const CaseIntake: React.FC<CaseIntakeProps> = ({
         severity: "Moderate",
         associatedSymptoms: [],
         redFlags: ["None noted"],
-        pathwayNotes: "Intake complete.",
-        disclaimer: "Intake summary generated for Dr. Ananya Kulkarni.",
+        pathwayNotes: `${pathway === "ayush" ? "AYUSH Holistic" : "Allopathic General Medicine"} intake complete.`,
+        disclaimer: `Intake summary generated for ${assignedDoctor?.name || "attending physician"}.`,
       },
       attachedDocuments: attachedDocs,
+      doctorId: assignedDoctor?.id,
+      doctorQrCode: assignedDoctor?.qrCodeToken,
+      doctorName: assignedDoctor?.name,
+      doctorHospital: assignedDoctor?.hospital,
+      doctorDepartment: assignedDoctor?.department,
+      checkInStatus: assignedDoctor ? "checked_in" : "pending_qr",
+      qrScannedAt: assignedDoctor ? new Date().toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" }) : undefined,
+      isEmergency: isEmerg,
+      emergencyDetails: emergencyAlert || aiSummary?.emergencyDetails || undefined,
     });
 
     // Also link any attached documents to patient's medical records
@@ -316,6 +402,19 @@ export const CaseIntake: React.FC<CaseIntakeProps> = ({
             <X className="w-5 h-5" />
           </button>
         </div>
+
+        {/* Assigned Doctor Banner if QR was scanned beforehand */}
+        {assignedDoctor && (
+          <div className="bg-[#c9fdd7] px-5 py-2.5 border-b border-[#003d29]/15 flex items-center justify-between text-xs font-bold text-[#003d29]">
+            <div className="flex items-center gap-2">
+              <span className="w-2.5 h-2.5 rounded-full bg-[#347355] animate-pulse" />
+              <span>Desk QR Linked: <strong>{assignedDoctor.name}</strong> ({assignedDoctor.roomNumber} · {assignedDoctor.department})</span>
+            </div>
+            <span className="font-mono text-[10px] font-bold bg-[#003d29] text-[#c9fdd7] px-2 py-0.5 rounded-md">
+              {assignedDoctor.qrCodeToken}
+            </span>
+          </div>
+        )}
 
         {/* Modal Body */}
         <div className="flex-1 p-5 sm:p-8 overflow-y-auto font-mono text-[#092c20]">
@@ -979,6 +1078,64 @@ export const CaseIntake: React.FC<CaseIntakeProps> = ({
           )}
         </div>
       </div>
+
+      {/* Real-Time Emergency Red-Flag Modal */}
+      {showEmergencyModal && emergencyAlert && (
+        <div className="fixed inset-0 z-[70] bg-black/80 backdrop-blur-md flex items-center justify-center p-4 animate-fade-in">
+          <div className="max-w-md w-full bg-white rounded-2xl shadow-2xl border-2 border-red-500 overflow-hidden">
+            <div className="bg-red-600 text-white p-5 flex items-center gap-3.5">
+              <div className="w-11 h-11 rounded-xl bg-white/20 flex items-center justify-center flex-shrink-0 animate-pulse">
+                <AlertCircle className="w-6 h-6 text-white stroke-[2.5]" />
+              </div>
+              <div>
+                <span className="text-[10px] font-bold uppercase tracking-widest bg-red-800 px-2 py-0.5 rounded">
+                  🚨 Clinical Emergency Detected
+                </span>
+                <h3 className="text-sm sm:text-base font-bold leading-tight mt-1">
+                  {emergencyAlert.title}
+                </h3>
+              </div>
+            </div>
+
+            <div className="p-5 space-y-4 text-xs">
+              <div className="p-3.5 bg-red-50 border border-red-200 rounded-xl text-red-900 leading-relaxed">
+                <strong className="block font-bold mb-1 text-red-950">Reason for Clinical Escalation:</strong>
+                {emergencyAlert.reason}
+              </div>
+
+              <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl text-amber-900 leading-snug">
+                <strong className="block font-bold text-[11px] mb-0.5 text-amber-950">Recommended Action:</strong>
+                <span>{emergencyAlert.actionRecommended}</span>
+              </div>
+
+              <div className="pt-2 space-y-2.5">
+                <a
+                  href="tel:108"
+                  className="w-full py-3 bg-red-600 hover:bg-red-700 text-white font-bold rounded-xl text-center flex items-center justify-center gap-2 shadow-md transition-colors"
+                >
+                  <span>🚨 Call Emergency 108 Ambulance</span>
+                </a>
+
+                <button
+                  type="button"
+                  onClick={handleFastTrackEmergency}
+                  className="w-full py-3 bg-[#003d29] hover:bg-[#347355] text-white font-bold rounded-xl flex items-center justify-center gap-2 shadow-sm transition-colors cursor-pointer"
+                >
+                  <span>⚡ Fast-Track to Emergency Triage (Priority Token)</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setShowEmergencyModal(false)}
+                  className="w-full py-2 text-center text-xs text-[#587366] hover:text-[#003d29] font-medium cursor-pointer"
+                >
+                  I am in a safe setting, continue clinical questionnaire
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

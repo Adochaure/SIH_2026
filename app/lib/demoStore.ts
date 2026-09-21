@@ -46,13 +46,36 @@ export interface ConsultationRecord {
   };
   attachedDocuments: AttachedDocument[];
   // Doctor consultation outputs
+  // Doctor consultation & QR check-in outputs
+  doctorId?: string;
+  doctorQrCode?: string;
+  checkInStatus?: "pending_qr" | "checked_in" | "in_consultation" | "completed";
+  qrScannedAt?: string;
   doctorName?: string;
   doctorHospital?: string;
   doctorDepartment?: string;
+  doctorRoom?: string;
   diagnosis?: string;
   clinicalNotes?: string;
   prescriptions?: PrescriptionItem[];
   completedAt?: string;
+  isEmergency?: boolean;
+  emergencyDetails?: {
+    title: string;
+    reason: string;
+    severity?: string;
+    actionRecommended?: string;
+  };
+}
+
+export interface DoctorNotification {
+  id: string;
+  doctorId?: string;
+  title: string;
+  message: string;
+  time: string;
+  read: boolean;
+  consultationId?: string;
 }
 
 export interface TimelineRecord {
@@ -124,8 +147,39 @@ export const DEFAULT_DOCTOR: DoctorProfile = {
   qualifications: "MBBS, MD (Internal Medicine)",
 };
 
+export const KNOWN_DOCTORS: DoctorProfile[] = [
+  DEFAULT_DOCTOR,
+  {
+    id: "DOC-RAJESH-RR",
+    name: "Dr. Rajesh Rao",
+    specialty: "Senior Consultant Physician",
+    hospital: "Carelink Central OPD",
+    department: "Pulmonology & Internal Medicine",
+    roomNumber: "OPD Room 4",
+    qrCodeToken: "DOC-OPD4-RR-4821",
+    experience: "16 Years",
+    qualifications: "MBBS, MD, FCCP",
+  },
+  {
+    id: "DOC-MEERA-MN",
+    name: "Dr. Meera Nambiar",
+    specialty: "Holistic Health Specialist",
+    hospital: "Carelink Holistic Center",
+    department: "AYUSH & Integrative Wellness",
+    roomNumber: "OPD Room 1",
+    qrCodeToken: "AYUSH-HOLISTIC-1",
+    experience: "10 Years",
+    qualifications: "BAMS, MD (Ayurveda)",
+  },
+];
+
+const STORAGE_KEY_NOTIFICATIONS = "carelink_demo_doctor_notifications_v2";
+
 class DemoStore {
   private listeners: Set<() => void> = new Set();
+  private memoryPatient: PatientProfile = JSON.parse(JSON.stringify(DEFAULT_PATIENT));
+  private memoryConsultations: ConsultationRecord[] = [];
+  private memoryNotifications: DoctorNotification[] = [];
 
   constructor() {
     if (typeof window !== "undefined") {
@@ -151,7 +205,7 @@ class DemoStore {
   }
 
   getPatient(): PatientProfile {
-    if (typeof window === "undefined") return DEFAULT_PATIENT;
+    if (typeof window === "undefined") return this.memoryPatient;
     try {
       const stored = localStorage.getItem(STORAGE_KEY_PATIENT);
       if (stored) {
@@ -164,7 +218,11 @@ class DemoStore {
   }
 
   savePatient(patient: PatientProfile) {
-    if (typeof window === "undefined") return;
+    if (typeof window === "undefined") {
+      this.memoryPatient = patient;
+      this.notify();
+      return;
+    }
     try {
       localStorage.setItem(STORAGE_KEY_PATIENT, JSON.stringify(patient));
       this.notify();
@@ -187,7 +245,7 @@ class DemoStore {
   }
 
   getConsultations(): ConsultationRecord[] {
-    if (typeof window === "undefined") return [];
+    if (typeof window === "undefined") return this.memoryConsultations;
     try {
       const stored = localStorage.getItem(STORAGE_KEY_CONSULTATIONS);
       if (stored) {
@@ -200,7 +258,11 @@ class DemoStore {
   }
 
   saveConsultations(consultations: ConsultationRecord[]) {
-    if (typeof window === "undefined") return;
+    if (typeof window === "undefined") {
+      this.memoryConsultations = consultations;
+      this.notify();
+      return;
+    }
     try {
       localStorage.setItem(STORAGE_KEY_CONSULTATIONS, JSON.stringify(consultations));
       this.notify();
@@ -220,12 +282,195 @@ class DemoStore {
       tokenNumber,
       queuePosition: consultations.filter(c => c.status === "Waiting").length + 1,
       status: "Waiting",
+      checkInStatus: data.checkInStatus || (data.doctorId || data.doctorQrCode ? "checked_in" : "pending_qr"),
       createdAt: new Date().toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" }),
     };
 
     const updated = [newConsultation, ...consultations];
     this.saveConsultations(updated);
+
+    // If doctor assigned and already checked in, notify them
+    if (newConsultation.checkInStatus === "checked_in" && (newConsultation.doctorId || newConsultation.doctorQrCode)) {
+      this.addDoctorNotification({
+        id: `notif-${Date.now()}`,
+        doctorId: newConsultation.doctorId,
+        title: newConsultation.isEmergency
+          ? `🚨 EMERGENCY CASE (Token ${tokenNumber})`
+          : `New Case Check-in (Token ${tokenNumber})`,
+        message: `${newConsultation.patientName} submitted case [${newConsultation.chiefComplaint.slice(0, 45)}] to your queue.`,
+        time: "Just now",
+        read: false,
+        consultationId: newConsultation.id,
+      });
+    }
+
     return newConsultation;
+  }
+
+  getDoctorByQr(code: string): DoctorProfile | null {
+    if (!code) return null;
+    const clean = code.trim().toLowerCase();
+
+    // Check in known doctors by exact token or ID
+    const directMatch = KNOWN_DOCTORS.find(
+      (d) =>
+        d.qrCodeToken.toLowerCase() === clean ||
+        d.id.toLowerCase() === clean ||
+        clean.includes(d.qrCodeToken.toLowerCase())
+    );
+    if (directMatch) return directMatch;
+
+    // Current store doctor
+    const current = this.getDoctor();
+    if (
+      current.qrCodeToken.toLowerCase() === clean ||
+      current.id.toLowerCase() === clean ||
+      clean.includes(current.qrCodeToken.toLowerCase())
+    ) {
+      return current;
+    }
+
+    // Fuzzy matching for room or doctor name
+    if (clean.includes("ananya") || clean.includes("3") || clean.includes("democare")) {
+      return DEFAULT_DOCTOR;
+    }
+    if (clean.includes("rajesh") || clean.includes("4") || clean.includes("rao")) {
+      return KNOWN_DOCTORS[1];
+    }
+    if (clean.includes("meera") || clean.includes("ayush") || clean.includes("1")) {
+      return KNOWN_DOCTORS[2];
+    }
+
+    // Default fallback to Dr. Ananya Kulkarni
+    return DEFAULT_DOCTOR;
+  }
+
+  assignDoctorToConsultation(
+    consultationId: string,
+    doctor: DoctorProfile
+  ): ConsultationRecord | null {
+    const consultations = this.getConsultations();
+    const index = consultations.findIndex((c) => c.id === consultationId);
+    if (index === -1) return null;
+
+    const consultation = consultations[index];
+    const nowTime = new Date().toLocaleTimeString("en-US", {
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+
+    const updated: ConsultationRecord = {
+      ...consultation,
+      doctorId: doctor.id,
+      doctorQrCode: doctor.qrCodeToken,
+      doctorName: doctor.name,
+      doctorHospital: doctor.hospital,
+      doctorDepartment: doctor.department,
+      checkInStatus: "checked_in",
+      qrScannedAt: nowTime,
+      status: "Waiting",
+    };
+
+    consultations[index] = updated;
+    this.saveConsultations(consultations);
+
+    // Add alert notification for doctor
+    this.addDoctorNotification({
+      id: `notif-${Date.now()}`,
+      doctorId: doctor.id,
+      title: updated.isEmergency
+        ? `🚨 EMERGENCY CHECK-IN (Token ${updated.tokenNumber})`
+        : `Patient Check-in (Token ${updated.tokenNumber})`,
+      message: `${updated.patientName} scanned your ${doctor.roomNumber} QR (${doctor.qrCodeToken}) and joined your queue.`,
+      time: "Just now",
+      read: false,
+      consultationId: updated.id,
+    });
+
+    return updated;
+  }
+
+  getDoctorNotifications(): DoctorNotification[] {
+    if (typeof window === "undefined") {
+      if (this.memoryNotifications.length === 0) {
+        this.memoryNotifications = [
+          {
+            id: "n-1",
+            doctorId: "doc-1",
+            title: "Live Desk Ready",
+            message: "Doctor workstation initialized for OPD Room 3.",
+            time: "Now",
+            read: false,
+          },
+          {
+            id: "n-2",
+            doctorId: "DOC-ANANYA-AK",
+            title: "New Lab Result Synced",
+            message: "CBC and Lipid Profile report attached to Case #CL-1024 (Rahul Sharma).",
+            time: "15 mins ago",
+            read: false,
+          },
+        ];
+      }
+      return this.memoryNotifications;
+    }
+    try {
+      const stored = localStorage.getItem(STORAGE_KEY_NOTIFICATIONS);
+      if (stored) {
+        return JSON.parse(stored);
+      }
+    } catch (e) {
+      console.error("Error reading notifications:", e);
+    }
+    return [
+      {
+        id: "n-1",
+        doctorId: "DOC-ANANYA-AK",
+        title: "Patient Check-in (Token C-214)",
+        message: "Priya Sharma has checked in with your Room 3 QR code and is waiting in the queue.",
+        time: "2 mins ago",
+        read: false,
+      },
+      {
+        id: "n-2",
+        doctorId: "DOC-ANANYA-AK",
+        title: "New Lab Result Synced",
+        message: "CBC and Lipid Profile report attached to Case #CL-1024 (Rahul Sharma).",
+        time: "15 mins ago",
+        read: false,
+      },
+    ];
+  }
+
+  addDoctorNotification(notif: DoctorNotification) {
+    if (typeof window === "undefined") {
+      this.memoryNotifications = [notif, ...this.getDoctorNotifications()];
+      this.notify();
+      return;
+    }
+    const current = this.getDoctorNotifications();
+    const updated = [notif, ...current];
+    try {
+      localStorage.setItem(STORAGE_KEY_NOTIFICATIONS, JSON.stringify(updated));
+      this.notify();
+    } catch (e) {
+      console.error("Error saving notification:", e);
+    }
+  }
+
+  markAllNotificationsRead() {
+    if (typeof window === "undefined") {
+      this.memoryNotifications = this.memoryNotifications.map((n) => ({ ...n, read: true }));
+      this.notify();
+      return;
+    }
+    const current = this.getDoctorNotifications().map((n) => ({ ...n, read: true }));
+    try {
+      localStorage.setItem(STORAGE_KEY_NOTIFICATIONS, JSON.stringify(current));
+      this.notify();
+    } catch (e) {
+      console.error("Error updating notifications:", e);
+    }
   }
 
   completeConsultation(
@@ -255,6 +500,7 @@ class DemoStore {
     const updatedConsultation: ConsultationRecord = {
       ...consultation,
       status: "Completed",
+      checkInStatus: "completed",
       doctorName: doctorDetails.doctorName,
       doctorHospital: doctorDetails.doctorHospital,
       doctorDepartment: doctorDetails.doctorDepartment,
@@ -310,11 +556,22 @@ class DemoStore {
     this.savePatient(patient);
   }
 
+  updateConsultation(id: string, updates: Partial<ConsultationRecord>): ConsultationRecord | null {
+    const consultations = this.getConsultations();
+    const index = consultations.findIndex((c) => c.id === id);
+    if (index === -1) return null;
+    const updated = { ...consultations[index], ...updates };
+    consultations[index] = updated;
+    this.saveConsultations(consultations);
+    return updated;
+  }
+
   resetDemo() {
     if (typeof window === "undefined") return;
     localStorage.removeItem(STORAGE_KEY_PATIENT);
     localStorage.removeItem(STORAGE_KEY_DOCTOR);
     localStorage.removeItem(STORAGE_KEY_CONSULTATIONS);
+    localStorage.removeItem(STORAGE_KEY_NOTIFICATIONS);
     this.savePatient(DEFAULT_PATIENT);
     this.saveConsultations([]);
     this.notify();

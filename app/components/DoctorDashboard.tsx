@@ -30,9 +30,13 @@ import {
   Trash2,
   CheckCircle2,
   Sparkles,
+  Edit2,
+  AlertTriangle,
 } from "lucide-react";
 import { Navbar } from "./Navbar";
 import { demoStore, PrescriptionItem, AttachedDocument, ConsultationRecord } from "../lib/demoStore";
+import QRCode from "qrcode";
+import { useLanguage } from "../lib/languageContext";
 
 export interface DoctorDashboardProps {
   doctorName?: string;
@@ -91,12 +95,31 @@ export const DoctorDashboard: React.FC<DoctorDashboardProps> = ({
   onLogout,
   onPatientPortal,
 }) => {
+  const { t, language } = useLanguage();
+  const [qrDataUrl, setQrDataUrl] = useState<string>("");
+
+  useEffect(() => {
+    QRCode.toDataURL("OPD-DEMOCARE-3", {
+      width: 280,
+      margin: 1,
+      color: {
+        dark: "#003d29",
+        light: "#ffffff",
+      },
+    })
+      .then((url) => setQrDataUrl(url))
+      .catch((err) => console.error("Error generating QR:", err));
+  }, []);
+
   // DemoStore Synchronized Consultations
   const [storeConsultations, setStoreConsultations] = useState<ConsultationRecord[]>(() => demoStore.getConsultations());
+  const [notifications, setNotifications] = useState(() => demoStore.getDoctorNotifications());
+  const unreadNotifications = notifications.filter((n) => !n.read).length;
 
   useEffect(() => {
     const unsubscribe = demoStore.subscribe(() => {
       setStoreConsultations(demoStore.getConsultations());
+      setNotifications(demoStore.getDoctorNotifications());
     });
     return () => unsubscribe();
   }, []);
@@ -121,30 +144,6 @@ export const DoctorDashboard: React.FC<DoctorDashboardProps> = ({
 
   // Notifications Modal/Dropdown
   const [isNotificationOpen, setIsNotificationOpen] = useState(false);
-  const [unreadNotifications, setUnreadNotifications] = useState(3);
-  const [notifications, setNotifications] = useState([
-    {
-      id: "n-1",
-      title: "Patient Check-in (Token C-214)",
-      message: "Priya Sharma has checked in with your Room 4 QR code and is waiting in the queue.",
-      time: "2 mins ago",
-      read: false,
-    },
-    {
-      id: "n-2",
-      title: "New Lab Result Synced",
-      message: "CBC and Lipid Profile report attached to Case #CL-1024 (Rahul Sharma).",
-      time: "15 mins ago",
-      read: false,
-    },
-    {
-      id: "n-3",
-      title: "Family Pedigree Alert",
-      message: "High hereditary hypertension noted in Priya Sharma's linked family records.",
-      time: "1 hour ago",
-      read: false,
-    },
-  ]);
 
   // Doctor QR Code Modal
   const [isQrModalOpen, setIsQrModalOpen] = useState(false);
@@ -153,6 +152,16 @@ export const DoctorDashboard: React.FC<DoctorDashboardProps> = ({
   // Patient Detailed View State
   const [selectedPatient, setSelectedPatient] = useState<PatientRecord | null>(null);
   const [patientDetailTab, setPatientDetailTab] = useState<"case" | "timeline" | "family-tree">("case");
+  const [activeDocPreview, setActiveDocPreview] = useState<AttachedDocument | null>(null);
+
+  // Editable Intake & Vitals State for Doctor
+  const [isEditingIntake, setIsEditingIntake] = useState(false);
+  const [editedComplaint, setEditedComplaint] = useState("");
+  const [editedHpi, setEditedHpi] = useState("");
+  const [editedDuration, setEditedDuration] = useState("");
+  const [editedSeverity, setEditedSeverity] = useState("");
+  const [editedVitals, setEditedVitals] = useState("");
+  const [intakeSavedMsg, setIntakeSavedMsg] = useState("");
 
   // Demo Patients Database (Unified with Carelink patient ecosystem)
   const [patients, setPatients] = useState<PatientRecord[]>([
@@ -334,8 +343,14 @@ export const DoctorDashboard: React.FC<DoctorDashboardProps> = ({
     },
   ]);
 
-  // Map storeConsultations into dynamic patient records
-  const dynamicPatients: PatientRecord[] = storeConsultations.map((cons) => {
+  // Filter storeConsultations: only cases checked in via QR scan OR already completed should appear for the doctor.
+  // Newly created cases pending QR scan will not dispatch until the patient checks in at the OPD desk.
+  const checkedInConsultations = storeConsultations.filter(
+    (cons) => cons.checkInStatus === "checked_in" || cons.status === "Completed"
+  );
+
+  // Map checked-in consultations into dynamic patient records
+  const dynamicPatients: PatientRecord[] = checkedInConsultations.map((cons) => {
     return {
       id: cons.id,
       name: cons.patientName,
@@ -344,7 +359,9 @@ export const DoctorDashboard: React.FC<DoctorDashboardProps> = ({
       age: cons.age,
       gender: cons.gender,
       contact: cons.contact,
-      lastVisit: cons.completedAt ? `Completed (${cons.completedAt})` : "Today (Live Intake)",
+      lastVisit: cons.completedAt
+        ? `Completed (${cons.completedAt})`
+        : `Checked-in via Room 3 QR (${cons.qrScannedAt || cons.createdAt || "Live"})`,
       status: cons.status === "Waiting" ? "Active" : "Recent",
       initials: cons.patientName.split(" ").map((n) => n[0]).join("").slice(0, 2).toUpperCase(),
       abhaId: cons.abhaId,
@@ -366,28 +383,44 @@ export const DoctorDashboard: React.FC<DoctorDashboardProps> = ({
 
   const allPatients = [...dynamicPatients, ...patients];
 
-  // Today's Appointments (Derived from active patient queue with store consultations at top)
-  const todayAppointments = [
-    ...storeConsultations.map((cons) => ({
+  // Today's Appointments (Derived from verified consultations with emergency priority at top)
+  const allTodayAppointments = [
+    ...checkedInConsultations.map((cons) => ({
       time: cons.createdAt || "Live",
       name: cons.patientName,
-      meta: `Token ${cons.tokenNumber} · ${cons.pathway === "ayush" ? "AYUSH Intake" : "General Medicine"}`,
+      tokenNumber: cons.tokenNumber,
+      isEmergency: cons.isEmergency,
+      meta: `Token ${cons.tokenNumber} · ${
+        cons.isEmergency ? "🚨 EMERGENCY FAST-TRACK" : "Room 3 QR Verified"
+      } · ${cons.pathway === "ayush" ? "AYUSH Intake" : "General Medicine"}`,
       status: cons.status,
       patientId: cons.id,
     })),
-    { time: "11:00 AM", name: "Rahul Sharma", meta: "Follow-up · Case #CL-1024", status: "Upcoming", patientId: "pt-1001" },
-    { time: "12:30 PM", name: "Priya Patil", meta: "New case · Case #CL-1025", status: "Upcoming", patientId: "pt-1002" },
-    { time: "02:00 PM", name: "Amit Joshi", meta: "Review · Case #CL-1026", status: "Upcoming", patientId: "pt-1003" },
+    { time: "11:00 AM", name: "Rahul Sharma", tokenNumber: "A-101", isEmergency: false, meta: "Token A-101 · Case #CL-1024", status: "Upcoming", patientId: "pt-1001" },
+    { time: "12:30 PM", name: "Priya Patil", tokenNumber: "A-102", isEmergency: false, meta: "Token A-102 · Case #CL-1025", status: "Upcoming", patientId: "pt-1002" },
+    { time: "02:00 PM", name: "Amit Joshi", tokenNumber: "A-103", isEmergency: false, meta: "Token A-103 · Case #CL-1026", status: "Upcoming", patientId: "pt-1003" },
   ];
 
-  // Filtering patients
+  const todayAppointments = allTodayAppointments.filter((app) => {
+    if (!searchQuery.trim()) return true;
+    const q = searchQuery.toLowerCase().trim();
+    return (
+      app.name.toLowerCase().includes(q) ||
+      (app.tokenNumber && app.tokenNumber.toLowerCase().includes(q)) ||
+      app.meta.toLowerCase().includes(q)
+    );
+  });
+
+  // Filtering patients by name, token number, caseId, or ABHA
   const filteredPatients = allPatients.filter((pt) => {
+    const q = searchQuery.toLowerCase().trim();
     const matchesQuery =
-      searchQuery === "" ||
-      pt.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      pt.patientId.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      pt.caseId.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      pt.abhaId.toLowerCase().includes(searchQuery.toLowerCase());
+      q === "" ||
+      pt.name.toLowerCase().includes(q) ||
+      pt.patientId.toLowerCase().includes(q) ||
+      pt.caseId.toLowerCase().includes(q) ||
+      pt.abhaId.toLowerCase().includes(q) ||
+      (pt.consultationRef?.tokenNumber && pt.consultationRef.tokenNumber.toLowerCase().includes(q));
 
     const matchesFilter =
       patientFilter === "all" || pt.status.toLowerCase() === patientFilter.toLowerCase();
@@ -399,6 +432,17 @@ export const DoctorDashboard: React.FC<DoctorDashboardProps> = ({
     setSelectedPatient(pt);
     setPatientDetailTab("case");
     setConsultationSuccessMsg("");
+    setEditedComplaint(pt.chiefComplaint || "");
+    setEditedHpi(
+      pt.consultationRef?.aiSummary?.hpi ||
+        `Patient presents with ${pt.chiefComplaint || "acute symptoms"}.`
+    );
+    setEditedDuration(pt.consultationRef?.aiSummary?.duration || "2-3 days");
+    setEditedSeverity(pt.consultationRef?.aiSummary?.severity || "Moderate");
+    setEditedVitals(pt.vitals || "BP 120/80 mmHg · Pulse 72 bpm · Temp 98.6°F · SpO2 99%");
+    setIsEditingIntake(false);
+    setIntakeSavedMsg("");
+
     if (pt.consultationRef) {
       setDoctorDiagnosis(pt.consultationRef.diagnosis || "Acute Upper Respiratory Tract Infection");
       setDoctorNotes(
@@ -417,25 +461,78 @@ export const DoctorDashboard: React.FC<DoctorDashboardProps> = ({
     }
   };
 
+  const handleSaveIntakeCorrections = () => {
+    if (!selectedPatient) return;
+    const currentSummary = selectedPatient.consultationRef?.aiSummary;
+    const updatedAiSummary: ConsultationRecord["aiSummary"] = {
+      chiefComplaint: editedComplaint,
+      hpi: editedHpi,
+      duration: editedDuration,
+      severity: editedSeverity,
+      associatedSymptoms: currentSummary?.associatedSymptoms || [],
+      redFlags: currentSummary?.redFlags || ["None noted"],
+      pathwayNotes: currentSummary?.pathwayNotes || "Intake verified and updated by doctor.",
+      disclaimer: currentSummary?.disclaimer || "Intake summary verified for doctor review.",
+    };
+
+    if (selectedPatient.consultationRef) {
+      demoStore.updateConsultation(selectedPatient.consultationRef.id, {
+        chiefComplaint: editedComplaint,
+        aiSummary: updatedAiSummary,
+      });
+    }
+
+    setSelectedPatient((prev) => {
+      if (!prev) return null;
+      return {
+        ...prev,
+        chiefComplaint: editedComplaint,
+        vitals: editedVitals,
+        consultationRef: prev.consultationRef
+          ? {
+              ...prev.consultationRef,
+              chiefComplaint: editedComplaint,
+              aiSummary: updatedAiSummary,
+            }
+          : undefined,
+      };
+    });
+
+    setIsEditingIntake(false);
+    setIntakeSavedMsg("Case history & vitals corrections saved!");
+    setTimeout(() => setIntakeSavedMsg(""), 3000);
+  };
+
+  const handlePrintCaseSummary = () => {
+    if (typeof window !== "undefined") {
+      window.print();
+    }
+  };
+
   const handleMarkAllNotificationsRead = () => {
     setNotifications((prev) => prev.map((n) => ({ ...n, read: true })));
-    setUnreadNotifications(0);
+    demoStore.markAllNotificationsRead();
+    setNotifications(demoStore.getDoctorNotifications());
   };
 
   const handleCopyQrCode = () => {
+    if (typeof navigator !== "undefined" && navigator.clipboard) {
+      navigator.clipboard.writeText("OPD-DEMOCARE-3");
+    }
     setQrCopied(true);
     setTimeout(() => setQrCopied(false), 2000);
   };
 
   return (
     <div className="min-h-screen w-full bg-[#f0fff4] text-[#092c20] font-mono antialiased flex flex-col">
-      {/* 1. Carelink Website Navbar at Top */}
+      {/* 1. Carelink Website Navbar at Top with Logout */}
       <Navbar
         isLoggedIn={true}
         userType="doctor"
         patientName={doctorName}
         patientInitials="DR"
         onProfileClick={() => setActiveNav("settings")}
+        onLogout={onLogout}
       />
 
       {/* Main Workspace Layout (Sidebar + Content) */}
@@ -449,7 +546,7 @@ export const DoctorDashboard: React.FC<DoctorDashboardProps> = ({
           <div>
             {/* Mobile close button */}
             <div className="flex md:hidden items-center justify-between pb-3 mb-3 border-b border-[#003d29]/10">
-              <span className="text-xs font-bold text-[#003d29]">Doctor Workstation</span>
+              <span className="text-xs font-bold text-[#003d29]">{t("doctorWorkstation")}</span>
               <button
                 type="button"
                 onClick={() => setIsMobileMenuOpen(false)}
@@ -460,7 +557,7 @@ export const DoctorDashboard: React.FC<DoctorDashboardProps> = ({
             </div>
 
             <p className="px-3 text-[10px] font-bold uppercase tracking-widest text-[#587366] mb-2">
-              Clinical Navigation
+              {t("doctorWorkstation")}
             </p>
 
             {/* Sidebar Navigation: Dashboard & Patients only */}
@@ -479,7 +576,7 @@ export const DoctorDashboard: React.FC<DoctorDashboardProps> = ({
                 }`}
               >
                 <LayoutDashboard className="w-4 h-4 stroke-[2.2]" />
-                <span>Dashboard</span>
+                <span>{t("overview")}</span>
               </button>
 
               <button
@@ -496,7 +593,7 @@ export const DoctorDashboard: React.FC<DoctorDashboardProps> = ({
                 }`}
               >
                 <Users className="w-4 h-4 stroke-[2.2]" />
-                <span>Patients ({patients.length})</span>
+                <span>{t("patientDirectory")} ({patients.length})</span>
               </button>
             </nav>
 
@@ -504,13 +601,13 @@ export const DoctorDashboard: React.FC<DoctorDashboardProps> = ({
             <div className="mt-6 p-4 rounded-xl bg-[#003d29] text-[#f0fff4] border border-[#003d29] shadow-sm">
               <div className="flex items-center justify-between mb-2">
                 <span className="text-[10px] font-bold uppercase tracking-wider text-[#c9fdd7]">
-                  Doctor Desk QR
+                  {t("deskQrPlacard")}
                 </span>
                 <span className="w-2 h-2 rounded-full bg-[#48bb78] animate-pulse" />
               </div>
-              <p className="text-[11px] font-bold text-[#f0fff4]">Room 4 Desk Scanner</p>
+              <p className="text-[11px] font-bold text-[#f0fff4]">{roomNumber} · {department}</p>
               <p className="text-[10px] text-[#f0fff4]/70 mt-0.5 leading-snug">
-                Patients scan this unique code from their kiosk/dashboard to check in.
+                {t("scanDoctorQrToComplete")} <code className="text-[#c9fdd7] font-bold">OPD-DEMOCARE-3</code>.
               </p>
 
               <button
@@ -519,7 +616,7 @@ export const DoctorDashboard: React.FC<DoctorDashboardProps> = ({
                 className="mt-3 w-full flex items-center justify-center gap-2 py-2 px-3 bg-[#c9fdd7] hover:bg-white text-[#003d29] rounded-lg text-xs font-bold transition-colors cursor-pointer shadow-xs"
               >
                 <QrCode className="w-4 h-4 stroke-[2.2]" />
-                <span>Display Room QR</span>
+                <span>{t("showDeskQr")}</span>
               </button>
             </div>
           </div>
@@ -598,11 +695,10 @@ export const DoctorDashboard: React.FC<DoctorDashboardProps> = ({
                 <Search className="w-3.5 h-3.5 text-[#587366] absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
                 <input
                   type="text"
-                  placeholder="Find patient by name, ID or ABHA..."
+                  placeholder="Find by name, Token # (e.g. A-104), ABHA..."
                   value={searchQuery}
                   onChange={(e) => {
                     setSearchQuery(e.target.value);
-                    if (activeNav !== "patients") setActiveNav("patients");
                   }}
                   className="w-full pl-9 pr-3 py-1.5 text-xs bg-white border border-[#003d29]/15 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#347355]/30 text-[#003d29] placeholder-[#587366]/70 shadow-2xs"
                 />
@@ -664,13 +760,13 @@ export const DoctorDashboard: React.FC<DoctorDashboardProps> = ({
                 <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4 pb-4 border-b border-[#003d29]/10">
                   <div>
                     <span className="text-[10px] font-bold uppercase tracking-widest text-[#347355] bg-[#c9fdd7]/70 px-2.5 py-0.5 rounded-full border border-[#003d29]/10">
-                      Clinical Workspace
+                      {t("doctorWorkstation")}
                     </span>
                     <h1 className="text-2xl sm:text-3xl font-bold text-[#003d29] tracking-tight mt-1.5">
-                      Good morning, {doctorName}
+                      {t("goodMorning")}, {doctorName}
                     </h1>
                     <p className="text-xs text-[#587366] mt-1">
-                      {roomNumber} · Active OPD Session · Connected to ABDM Network
+                      {roomNumber} · {department} · {hospital}
                     </p>
                   </div>
 
@@ -680,7 +776,7 @@ export const DoctorDashboard: React.FC<DoctorDashboardProps> = ({
                     className="inline-flex items-center gap-2 px-4 py-2.5 bg-[#003d29] hover:bg-[#347355] text-[#f0fff4] rounded-xl text-xs font-bold transition-all shadow-md shadow-[#003d29]/15 cursor-pointer self-start sm:self-auto"
                   >
                     <QrCode className="w-4 h-4 text-[#c9fdd7]" />
-                    <span>Display Room QR</span>
+                    <span>{t("showDeskQr")}</span>
                   </button>
                 </div>
 
@@ -688,86 +784,111 @@ export const DoctorDashboard: React.FC<DoctorDashboardProps> = ({
                 <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
                   <div className="p-4 bg-white border border-[#003d29]/15 rounded-2xl shadow-xs">
                     <div className="flex items-center justify-between text-[#587366]">
-                      <span className="text-[10px] font-bold uppercase tracking-wider">Patients</span>
+                      <span className="text-[10px] font-bold uppercase tracking-wider">{t("patientDirectory")}</span>
                       <Users className="w-4 h-4 text-[#347355]" />
                     </div>
                     <div className="text-2xl sm:text-3xl font-bold text-[#003d29] mt-2">128</div>
-                    <span className="text-[10px] text-[#587366]">Total patient records</span>
+                    <span className="text-[10px] text-[#587366]">{t("patientsAndRecords")}</span>
                   </div>
 
                   <div className="p-4 bg-white border border-[#003d29]/15 rounded-2xl shadow-xs">
                     <div className="flex items-center justify-between text-[#587366]">
-                      <span className="text-[10px] font-bold uppercase tracking-wider">Today</span>
+                      <span className="text-[10px] font-bold uppercase tracking-wider">{t("todayAppointments")}</span>
                       <Clock className="w-4 h-4 text-[#347355]" />
                     </div>
                     <div className="text-2xl sm:text-3xl font-bold text-[#003d29] mt-2">12</div>
-                    <span className="text-[10px] text-[#587366]">Scheduled consultations</span>
+                    <span className="text-[10px] text-[#587366]">{t("todaysConsultations")}</span>
                   </div>
 
                   <div className="p-4 bg-white border border-[#003d29]/15 rounded-2xl shadow-xs">
                     <div className="flex items-center justify-between text-[#587366]">
-                      <span className="text-[10px] font-bold uppercase tracking-wider">Pending</span>
+                      <span className="text-[10px] font-bold uppercase tracking-wider">{t("status")}</span>
                       <Activity className="w-4 h-4 text-[#347355]" />
                     </div>
                     <div className="text-2xl sm:text-3xl font-bold text-[#003d29] mt-2">08</div>
-                    <span className="text-[10px] text-[#587366]">Cases awaiting review</span>
+                    <span className="text-[10px] text-[#587366]">{t("pendingReviews")}</span>
                   </div>
 
                   <div className="p-4 bg-white border border-[#003d29]/15 rounded-2xl shadow-xs">
                     <div className="flex items-center justify-between text-[#587366]">
-                      <span className="text-[10px] font-bold uppercase tracking-wider">Completed</span>
+                      <span className="text-[10px] font-bold uppercase tracking-wider">{t("completedVisits")}</span>
                       <Check className="w-4 h-4 text-[#347355]" />
                     </div>
                     <div className="text-2xl sm:text-3xl font-bold text-[#003d29] mt-2">24</div>
-                    <span className="text-[10px] text-[#587366]">Cases completed this month</span>
+                    <span className="text-[10px] text-[#587366]">{t("completedVisits")}</span>
                   </div>
                 </div>
 
-                {/* Dashboard Grid: Queue & Recent Cases */}
+                {/* Dashboard Grid: Active Consultations & Recent Cases */}
                 <div className="grid grid-cols-1 lg:grid-cols-[1.1fr_0.9fr] gap-5">
-                  {/* Today's Queue */}
+                  {/* Today's Active Consultations */}
                   <article className="p-5 sm:p-6 bg-white border border-[#003d29]/15 rounded-2xl shadow-xs flex flex-col justify-between">
                     <div>
                       <div className="flex items-center justify-between pb-3 border-b border-[#003d29]/10">
                         <h2 className="text-sm font-bold text-[#003d29] flex items-center gap-2">
                           <Clock className="w-4 h-4 text-[#347355]" />
-                          <span>Today&apos;s Active Consultations</span>
+                          <span>{t("todaysConsultations")}</span>
                         </h2>
                         <button
                           type="button"
                           onClick={() => setActiveNav("patients")}
                           className="text-[11px] font-bold text-[#347355] hover:text-[#003d29] cursor-pointer"
                         >
-                          View all patients →
+                          {t("viewAllPatients")}
                         </button>
                       </div>
 
                       <div className="divide-y divide-[#003d29]/10 mt-2">
                         {todayAppointments.map((item, idx) => (
-                          <div key={idx} className="py-3 flex items-center justify-between gap-3">
-                            <div className="text-xs font-bold text-[#003d29] min-w-16">{item.time}</div>
+                          <div
+                            key={idx}
+                            className={`py-3 flex items-center justify-between gap-3 ${
+                              item.isEmergency
+                                ? "bg-red-50/70 p-2.5 rounded-xl border border-red-200"
+                                : ""
+                            }`}
+                          >
+                            <div className="text-xs font-bold text-[#003d29] min-w-16 flex items-center gap-1">
+                              {item.isEmergency && (
+                                <AlertTriangle className="w-3.5 h-3.5 text-red-600 shrink-0 animate-bounce" />
+                              )}
+                              <span>{item.time}</span>
+                            </div>
                             <div className="min-w-0 flex-1">
-                              <div className="text-xs font-bold text-[#003d29] truncate">{item.name}</div>
+                              <div className="flex items-center gap-1.5">
+                                <span className="text-xs font-bold text-[#003d29] truncate">{item.name}</span>
+                                {item.isEmergency && (
+                                  <span className="px-1.5 py-0.5 rounded text-[9px] font-black bg-red-600 text-white tracking-wide uppercase">
+                                    ER ALERT
+                                  </span>
+                                )}
+                              </div>
                               <div className="text-[10px] text-[#587366] truncate">{item.meta}</div>
                             </div>
                             <span
                               className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
-                                item.status === "Waiting"
+                                item.isEmergency
+                                  ? "bg-red-100 text-red-700 border border-red-300 font-extrabold"
+                                  : item.status === "Waiting"
                                   ? "bg-[#c9fdd7] text-[#003d29]"
                                   : "bg-[#003d29]/10 text-[#003d29]"
                               }`}
                             >
-                              {item.status}
+                              {item.isEmergency ? "Priority ER" : item.status}
                             </span>
                             <button
                               type="button"
                               onClick={() => {
-                                const pt = patients.find((p) => p.id === item.patientId);
+                                const pt = allPatients.find((p) => p.id === item.patientId);
                                 if (pt) handleOpenPatient(pt);
                               }}
-                              className="px-2.5 py-1 bg-[#f0fff4] hover:bg-[#003d29] text-[#003d29] hover:text-[#f0fff4] border border-[#003d29]/20 rounded-lg text-[10px] font-bold transition-all cursor-pointer"
+                              className={`px-2.5 py-1 rounded-lg text-[10px] font-bold transition-all cursor-pointer shadow-xs ${
+                                item.isEmergency
+                                  ? "bg-red-600 hover:bg-red-700 text-white animate-pulse"
+                                  : "bg-[#003d29] hover:bg-[#347355] text-[#f0fff4]"
+                              }`}
                             >
-                              Open Case
+                              {item.isEmergency ? "🚨 Triage Case" : t("openCase")}
                             </button>
                           </div>
                         ))}
@@ -1010,6 +1131,12 @@ export const DoctorDashboard: React.FC<DoctorDashboardProps> = ({
                   </div>
 
                   <div className="flex flex-wrap items-center gap-2 border-t md:border-t-0 pt-3 md:pt-0 border-[#003d29]/10">
+                    {selectedPatient.consultationRef?.isEmergency && (
+                      <span className="px-3 py-1 bg-red-100 text-red-700 border border-red-300 rounded-lg text-xs font-bold animate-pulse flex items-center gap-1.5 shadow-xs">
+                        <AlertTriangle className="w-3.5 h-3.5 text-red-600 shrink-0" />
+                        <span>EMERGENCY FAST-TRACK</span>
+                      </span>
+                    )}
                     <span className="px-3 py-1 bg-[#f0fff4] text-[#003d29] border border-[#003d29]/15 rounded-lg text-xs font-bold">
                       Case #{selectedPatient.caseId}
                     </span>
@@ -1082,6 +1209,30 @@ export const DoctorDashboard: React.FC<DoctorDashboardProps> = ({
                       </div>
                     )}
 
+                    {/* Emergency Alert Banner if Case has Red-Flags */}
+                    {selectedPatient.consultationRef?.isEmergency && (
+                      <div className="p-4 sm:p-5 rounded-2xl bg-red-50 border-2 border-red-400 text-xs text-red-950 flex items-start gap-3.5 shadow-sm animate-fade-in">
+                        <div className="p-2 rounded-xl bg-red-100 text-red-600 shrink-0">
+                          <AlertTriangle className="w-5 h-5 animate-pulse" />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <h4 className="font-extrabold text-red-800 text-sm sm:text-base">
+                              🚨 Emergency Intake Alert: {selectedPatient.consultationRef.emergencyDetails?.title || "Critical Red-Flag Symptoms"}
+                            </h4>
+                            <span className="px-2 py-0.5 rounded text-[10px] font-black uppercase bg-red-600 text-white">
+                              Priority ER
+                            </span>
+                          </div>
+                          <p className="mt-1 text-red-800 text-xs leading-relaxed font-medium">
+                            {selectedPatient.consultationRef.emergencyDetails?.actionRecommended ||
+                              selectedPatient.consultationRef.emergencyDetails?.reason ||
+                              "Patient exhibited emergency red-flag symptoms during clinical intake. Fast-tracked for immediate attending physician review."}
+                          </p>
+                        </div>
+                      </div>
+                    )}
+
                     {/* AI CASE INTAKE SUMMARY CARD */}
                     {selectedPatient.consultationRef && (
                       <div className="p-5 sm:p-6 bg-white border border-[#003d29]/20 rounded-2xl shadow-xs space-y-4">
@@ -1092,47 +1243,165 @@ export const DoctorDashboard: React.FC<DoctorDashboardProps> = ({
                               AI Clinical Intake Summary
                             </h3>
                           </div>
-                          <span className="text-[10px] font-bold uppercase tracking-wider text-[#347355] bg-[#c9fdd7] px-2.5 py-1 rounded-full border border-[#003d29]/15">
-                            {selectedPatient.consultationRef.pathway === "ayush" ? "AYUSH Intake" : "General Medicine"}
-                          </span>
-                        </div>
-
-                        <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-                          <div className="p-3 bg-[#f0fff4] rounded-xl border border-[#003d29]/10">
-                            <span className="text-[10px] uppercase font-bold text-[#587366] block">
-                              Duration
+                          <div className="flex flex-wrap items-center gap-2">
+                            <span className="text-[10px] font-bold uppercase tracking-wider text-[#347355] bg-[#c9fdd7] px-2.5 py-1 rounded-full border border-[#003d29]/15">
+                              {selectedPatient.consultationRef.pathway === "ayush" ? "AYUSH Intake" : "General Medicine"}
                             </span>
-                            <strong className="text-xs text-[#003d29]">
-                              {selectedPatient.consultationRef.aiSummary?.duration || "2-3 days"}
-                            </strong>
-                          </div>
-                          <div className="p-3 bg-[#f0fff4] rounded-xl border border-[#003d29]/10">
-                            <span className="text-[10px] uppercase font-bold text-[#587366] block">
-                              Severity
-                            </span>
-                            <strong className="text-xs text-[#003d29]">
-                              {selectedPatient.consultationRef.aiSummary?.severity || "Moderate"}
-                            </strong>
-                          </div>
-                          <div className="p-3 bg-[#f0fff4] rounded-xl border border-[#003d29]/10 col-span-2 sm:col-span-1">
-                            <span className="text-[10px] uppercase font-bold text-[#587366] block">
-                              Red Flags
-                            </span>
-                            <span className="text-xs font-bold text-emerald-700">
-                              {selectedPatient.consultationRef.aiSummary?.redFlags?.[0] || "None noted"}
-                            </span>
+                            <button
+                              type="button"
+                              onClick={() => setIsEditingIntake(!isEditingIntake)}
+                              className="inline-flex items-center gap-1.5 px-3 py-1 rounded-lg bg-[#f0fff4] hover:bg-[#c9fdd7] border border-[#003d29]/20 text-xs font-bold text-[#003d29] cursor-pointer transition-colors"
+                            >
+                              <Edit2 className="w-3.5 h-3.5 text-[#347355]" />
+                              <span>{isEditingIntake ? "Cancel Edit" : "Edit / Correct History"}</span>
+                            </button>
+                            <button
+                              type="button"
+                              onClick={handlePrintCaseSummary}
+                              className="inline-flex items-center gap-1.5 px-3 py-1 rounded-lg bg-[#003d29] hover:bg-[#347355] text-white text-xs font-bold cursor-pointer transition-colors shadow-xs"
+                            >
+                              <Printer className="w-3.5 h-3.5 text-[#c9fdd7]" />
+                              <span>Print Summary & Rx</span>
+                            </button>
                           </div>
                         </div>
 
-                        <div>
-                          <span className="text-[10px] uppercase font-bold text-[#587366] block mb-1">
-                            History of Present Illness (HPI)
-                          </span>
-                          <p className="text-xs text-[#092c20] leading-relaxed bg-[#f0fff4] p-3 rounded-xl border border-[#003d29]/10">
-                            {selectedPatient.consultationRef.aiSummary?.hpi ||
-                              `Patient reports "${selectedPatient.chiefComplaint}" with acute onset.`}
-                          </p>
-                        </div>
+                        {intakeSavedMsg && (
+                          <div className="p-2.5 rounded-xl bg-[#c9fdd7] border border-[#347355]/30 text-xs font-bold text-[#003d29] flex items-center gap-2">
+                            <CheckCircle2 className="w-4 h-4 text-[#347355]" />
+                            <span>{intakeSavedMsg}</span>
+                          </div>
+                        )}
+
+                        {isEditingIntake ? (
+                          /* Doctor Inline Editing Form */
+                          <div className="p-4 rounded-xl bg-[#f0fff4] border border-[#347355]/30 space-y-3">
+                            <div className="flex items-center justify-between">
+                              <span className="text-xs font-bold text-[#003d29]">
+                                Correct Patient Intake & Clinical History
+                              </span>
+                              <span className="text-[10px] text-[#587366]">Doctor Verification Mode</span>
+                            </div>
+
+                            <div>
+                              <label className="block text-[10px] font-bold uppercase text-[#587366] mb-1">
+                                Chief Complaint
+                              </label>
+                              <input
+                                type="text"
+                                value={editedComplaint}
+                                onChange={(e) => setEditedComplaint(e.target.value)}
+                                className="w-full px-3 py-2 text-xs bg-white border border-[#003d29]/20 rounded-lg text-[#003d29] font-medium"
+                              />
+                            </div>
+
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                              <div>
+                                <label className="block text-[10px] font-bold uppercase text-[#587366] mb-1">
+                                  Duration
+                                </label>
+                                <input
+                                  type="text"
+                                  value={editedDuration}
+                                  onChange={(e) => setEditedDuration(e.target.value)}
+                                  className="w-full px-3 py-2 text-xs bg-white border border-[#003d29]/20 rounded-lg text-[#003d29] font-medium"
+                                />
+                              </div>
+                              <div>
+                                <label className="block text-[10px] font-bold uppercase text-[#587366] mb-1">
+                                  Severity
+                                </label>
+                                <input
+                                  type="text"
+                                  value={editedSeverity}
+                                  onChange={(e) => setEditedSeverity(e.target.value)}
+                                  className="w-full px-3 py-2 text-xs bg-white border border-[#003d29]/20 rounded-lg text-[#003d29] font-medium"
+                                />
+                              </div>
+                            </div>
+
+                            <div>
+                              <label className="block text-[10px] font-bold uppercase text-[#587366] mb-1">
+                                History of Present Illness (HPI)
+                              </label>
+                              <textarea
+                                rows={2}
+                                value={editedHpi}
+                                onChange={(e) => setEditedHpi(e.target.value)}
+                                className="w-full px-3 py-2 text-xs bg-white border border-[#003d29]/20 rounded-lg text-[#003d29] font-medium resize-none"
+                              />
+                            </div>
+
+                            <div>
+                              <label className="block text-[10px] font-bold uppercase text-[#587366] mb-1">
+                                Recorded Clinical Vitals
+                              </label>
+                              <input
+                                type="text"
+                                value={editedVitals}
+                                onChange={(e) => setEditedVitals(e.target.value)}
+                                placeholder="BP 120/80 mmHg · Pulse 72 bpm · Temp 98.6°F · SpO2 99%"
+                                className="w-full px-3 py-2 text-xs bg-white border border-[#003d29]/20 rounded-lg text-[#003d29] font-medium"
+                              />
+                            </div>
+
+                            <div className="flex items-center justify-end gap-2 pt-2">
+                              <button
+                                type="button"
+                                onClick={() => setIsEditingIntake(false)}
+                                className="px-3 py-1.5 rounded-lg border border-[#003d29]/20 text-xs text-[#587366] hover:text-[#003d29] cursor-pointer"
+                              >
+                                Cancel
+                              </button>
+                              <button
+                                type="button"
+                                onClick={handleSaveIntakeCorrections}
+                                className="px-4 py-1.5 rounded-lg bg-[#003d29] hover:bg-[#347355] text-white text-xs font-bold cursor-pointer transition-colors shadow-xs"
+                              >
+                                Save Corrections
+                              </button>
+                            </div>
+                          </div>
+                        ) : (
+                          <>
+                            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                              <div className="p-3 bg-[#f0fff4] rounded-xl border border-[#003d29]/10">
+                                <span className="text-[10px] uppercase font-bold text-[#587366] block">
+                                  Duration
+                                </span>
+                                <strong className="text-xs text-[#003d29]">
+                                  {selectedPatient.consultationRef.aiSummary?.duration || "2-3 days"}
+                                </strong>
+                              </div>
+                              <div className="p-3 bg-[#f0fff4] rounded-xl border border-[#003d29]/10">
+                                <span className="text-[10px] uppercase font-bold text-[#587366] block">
+                                  Severity
+                                </span>
+                                <strong className="text-xs text-[#003d29]">
+                                  {selectedPatient.consultationRef.aiSummary?.severity || "Moderate"}
+                                </strong>
+                              </div>
+                              <div className="p-3 bg-[#f0fff4] rounded-xl border border-[#003d29]/10 col-span-2 sm:col-span-1">
+                                <span className="text-[10px] uppercase font-bold text-[#587366] block">
+                                  Red Flags
+                                </span>
+                                <span className="text-xs font-bold text-emerald-700">
+                                  {selectedPatient.consultationRef.aiSummary?.redFlags?.[0] || "None noted"}
+                                </span>
+                              </div>
+                            </div>
+
+                            <div>
+                              <span className="text-[10px] uppercase font-bold text-[#587366] block mb-1">
+                                History of Present Illness (HPI)
+                              </span>
+                              <p className="text-xs text-[#092c20] leading-relaxed bg-[#f0fff4] p-3 rounded-xl border border-[#003d29]/10">
+                                {selectedPatient.consultationRef.aiSummary?.hpi ||
+                                  `Patient reports "${selectedPatient.chiefComplaint}" with acute onset.`}
+                              </p>
+                            </div>
+                          </>
+                        )}
 
                         {/* Attached Documents with OCR Text Preview */}
                         {selectedPatient.consultationRef.attachedDocuments &&
@@ -1452,6 +1721,68 @@ export const DoctorDashboard: React.FC<DoctorDashboardProps> = ({
                             <p className="mt-2 text-xs text-[#092c20] leading-relaxed bg-white p-2.5 rounded-lg border border-[#003d29]/10">
                               {item.notes}
                             </p>
+
+                            {/* Attached Records & OCR Transcripts */}
+                            {item.attachments && item.attachments.length > 0 && (
+                              <div className="mt-3 pt-3 border-t border-[#003d29]/10">
+                                <span className="text-[10px] uppercase font-bold text-[#347355] block mb-2 flex items-center gap-1.5">
+                                  <FileCheck className="w-3.5 h-3.5" />
+                                  <span>Attached Records & OCR Transcripts ({item.attachments.length})</span>
+                                </span>
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                                  {item.attachments.map((doc) => (
+                                    <div
+                                      key={doc.id}
+                                      className="p-3 bg-white rounded-xl border border-[#003d29]/10 flex flex-col justify-between gap-2 shadow-2xs"
+                                    >
+                                      <div className="flex items-start gap-2.5 min-w-0">
+                                        <div className="p-1.5 rounded-lg bg-[#c9fdd7]/70 text-[#003d29] shrink-0 mt-0.5">
+                                          <FileText className="w-4 h-4" />
+                                        </div>
+                                        <div className="min-w-0 flex-1">
+                                          <strong className="block text-xs font-bold text-[#003d29] truncate">
+                                            {doc.name}
+                                          </strong>
+                                          <span className="text-[10px] text-[#587366] block capitalize">
+                                            {doc.type.replace("_", " ")} · {doc.date} {doc.fileSize ? `· ${doc.fileSize}` : ""}
+                                          </span>
+                                          {doc.ocrText && (
+                                            <span className="inline-block mt-1 text-[9px] font-bold px-1.5 py-0.5 bg-[#c9fdd7] text-[#003d29] rounded">
+                                              ✓ OCR Verified
+                                            </span>
+                                          )}
+                                        </div>
+                                      </div>
+                                      <button
+                                        type="button"
+                                        onClick={() => setActiveDocPreview(doc)}
+                                        className="w-full py-1.5 px-2 bg-[#f0fff4] hover:bg-[#c9fdd7] text-[#003d29] border border-[#003d29]/15 rounded-lg text-[11px] font-bold transition-all cursor-pointer text-center"
+                                      >
+                                        Inspect Document & OCR Text
+                                      </button>
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
+
+                            {/* Prescriptions under timeline entry if present */}
+                            {item.prescriptions && item.prescriptions.length > 0 && (
+                              <div className="mt-3 pt-3 border-t border-[#003d29]/10">
+                                <span className="text-[10px] uppercase font-bold text-[#347355] block mb-1.5 flex items-center gap-1.5">
+                                  <Pill className="w-3.5 h-3.5" />
+                                  <span>Prescribed Medications</span>
+                                </span>
+                                <div className="space-y-1">
+                                  {item.prescriptions.map((rx) => (
+                                    <div key={rx.id} className="p-2 bg-white rounded-lg border border-[#003d29]/10 text-[11px] flex justify-between items-center">
+                                      <span className="font-bold text-[#003d29]">{rx.name}</span>
+                                      <span className="text-[#587366] font-mono text-[10px]">{rx.dosage} · {rx.frequency} · {rx.duration}</span>
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
                           </div>
                         </div>
                       ))}
@@ -1638,71 +1969,31 @@ export const DoctorDashboard: React.FC<DoctorDashboardProps> = ({
               {roomNumber} · {department}
             </p>
 
-            {/* High-Fidelity Unique Doctor QR Graphic */}
+            {/* High-Fidelity Authentic Doctor QR Graphic */}
             <div className="my-5 p-4 bg-[#f0fff4] rounded-2xl border-2 border-dashed border-[#003d29]/25 flex flex-col items-center justify-center">
-              <div className="p-3 bg-white rounded-xl shadow-md border border-[#003d29]/15">
-                {/* SVG QR Code Simulation with Center Medical Cross */}
-                <svg
-                  className="w-44 h-44 text-[#003d29]"
-                  viewBox="0 0 100 100"
-                  fill="currentColor"
-                  xmlns="http://www.w3.org/2000/svg"
-                >
-                  {/* Top-left corner finder */}
-                  <rect x="5" y="5" width="26" height="26" rx="4" fill="#003d29" />
-                  <rect x="9" y="9" width="18" height="18" rx="2" fill="#ffffff" />
-                  <rect x="13" y="13" width="10" height="10" rx="1" fill="#003d29" />
-
-                  {/* Top-right corner finder */}
-                  <rect x="69" y="5" width="26" height="26" rx="4" fill="#003d29" />
-                  <rect x="73" y="9" width="18" height="18" rx="2" fill="#ffffff" />
-                  <rect x="77" y="13" width="10" height="10" rx="1" fill="#003d29" />
-
-                  {/* Bottom-left corner finder */}
-                  <rect x="5" y="69" width="26" height="26" rx="4" fill="#003d29" />
-                  <rect x="9" y="73" width="18" height="18" rx="2" fill="#ffffff" />
-                  <rect x="13" y="77" width="10" height="10" rx="1" fill="#003d29" />
-
-                  {/* Data matrix dots */}
-                  <rect x="36" y="8" width="5" height="5" />
-                  <rect x="46" y="8" width="5" height="5" />
-                  <rect x="56" y="8" width="5" height="5" />
-                  <rect x="36" y="18" width="5" height="5" />
-                  <rect x="46" y="18" width="5" height="5" />
-                  <rect x="56" y="18" width="5" height="5" />
-
-                  <rect x="8" y="36" width="5" height="5" />
-                  <rect x="18" y="36" width="5" height="5" />
-                  <rect x="8" y="46" width="5" height="5" />
-                  <rect x="18" y="56" width="5" height="5" />
-
-                  <rect x="69" y="36" width="5" height="5" />
-                  <rect x="79" y="36" width="5" height="5" />
-                  <rect x="89" y="46" width="5" height="5" />
-                  <rect x="79" y="56" width="5" height="5" />
-
-                  <rect x="36" y="69" width="5" height="5" />
-                  <rect x="46" y="79" width="5" height="5" />
-                  <rect x="56" y="69" width="5" height="5" />
-                  <rect x="36" y="89" width="5" height="5" />
-                  <rect x="56" y="89" width="5" height="5" />
-
-                  <rect x="69" y="69" width="5" height="5" />
-                  <rect x="79" y="79" width="5" height="5" />
-                  <rect x="89" y="89" width="5" height="5" />
-
-                  {/* Center Doctor Cross Badge */}
-                  <circle cx="50" cy="50" r="14" fill="#ffffff" stroke="#347355" strokeWidth="2" />
-                  <rect x="47" y="40" width="6" height="20" rx="2" fill="#003d29" />
-                  <rect x="40" y="47" width="20" height="6" rx="2" fill="#003d29" />
-                </svg>
+              <div className="p-3 bg-white rounded-xl shadow-md border border-[#003d29]/15 flex items-center justify-center">
+                {qrDataUrl ? (
+                  /* eslint-disable-next-line @next/next/no-img-element */
+                  <img
+                    src={qrDataUrl}
+                    alt="Doctor OPD Desk QR Code"
+                    className="w-44 h-44 object-contain rounded-lg"
+                  />
+                ) : (
+                  <div className="w-44 h-44 flex items-center justify-center text-xs text-[#587366]">
+                    Generating QR...
+                  </div>
+                )}
               </div>
 
-              <span className="text-[11px] font-mono font-bold text-[#003d29] mt-3">
-                CODE: DOC-OPD4-RR-4821
+              <span className="text-xs font-mono font-bold text-[#003d29] mt-3 bg-[#c9fdd7] px-3 py-1 rounded-md border border-[#003d29]/20">
+                CODE: OPD-DEMOCARE-3
               </span>
-              <span className="text-[10px] text-[#587366] mt-0.5">
-                Linked ABDM Facility: Carelink OPD Clinic
+              <span className="text-[11px] font-bold text-[#003d29] mt-1">
+                {doctorName} · {roomNumber}
+              </span>
+              <span className="text-[10px] text-[#587366]">
+                {department} · {hospital}
               </span>
             </div>
 
@@ -1712,7 +2003,7 @@ export const DoctorDashboard: React.FC<DoctorDashboardProps> = ({
                 onClick={handleCopyQrCode}
                 className="w-full py-2.5 bg-[#003d29] hover:bg-[#347355] text-[#f0fff4] rounded-xl text-xs font-bold transition-colors cursor-pointer shadow-xs"
               >
-                {qrCopied ? "Desk Code Copied!" : "Copy Desk Code"}
+                {qrCopied ? "Desk Code Copied!" : t("copyDeskCode")}
               </button>
 
               <button
@@ -1721,7 +2012,98 @@ export const DoctorDashboard: React.FC<DoctorDashboardProps> = ({
                 className="w-full flex items-center justify-center gap-1.5 py-2 text-xs font-bold text-[#347355] hover:text-[#003d29] bg-[#f0fff4] border border-[#003d29]/15 rounded-xl cursor-pointer"
               >
                 <Printer className="w-3.5 h-3.5" />
-                <span>Print QR Placard</span>
+                <span>{t("print")} QR Placard</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Attached Document & OCR Inspection Modal for Doctor Workstation */}
+      {activeDocPreview && (
+        <div className="fixed inset-0 bg-[#003d29]/70 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-fade-in">
+          <div className="bg-white rounded-3xl max-w-lg w-full p-5 sm:p-6 shadow-2xl border border-[#003d29]/20 max-h-[90vh] flex flex-col">
+            <div className="flex items-center justify-between pb-3 border-b border-[#003d29]/10">
+              <div className="flex items-center gap-2.5">
+                <div className="p-2 rounded-xl bg-[#c9fdd7] text-[#003d29]">
+                  <FileText className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-sm sm:text-base font-bold text-[#003d29] truncate max-w-[240px] sm:max-w-xs">
+                    {activeDocPreview.name}
+                  </h3>
+                  <div className="flex items-center gap-2 mt-0.5">
+                    <span className="text-[10px] font-bold px-2 py-0.5 bg-[#f0fff4] text-[#347355] border border-[#003d29]/10 rounded capitalize">
+                      {activeDocPreview.type.replace("_", " ")}
+                    </span>
+                    <span className="text-[10px] text-[#587366]">{activeDocPreview.date}</span>
+                    {activeDocPreview.fileSize && (
+                      <span className="text-[10px] text-[#587366]">· {activeDocPreview.fileSize}</span>
+                    )}
+                  </div>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setActiveDocPreview(null)}
+                className="p-1.5 rounded-full hover:bg-[#e8efea] text-[#587366] hover:text-[#003d29] transition-colors cursor-pointer"
+                aria-label="Close document modal"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="overflow-y-auto flex-1 py-4 space-y-4">
+              {/* Document Image Preview if available */}
+              {activeDocPreview.previewUrl && (
+                <div className="rounded-xl overflow-hidden border border-[#003d29]/15 bg-neutral-100 flex items-center justify-center max-h-56">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={activeDocPreview.previewUrl}
+                    alt={activeDocPreview.name}
+                    className="max-h-56 object-contain w-auto"
+                  />
+                </div>
+              )}
+
+              {/* ABDM Verified Badge */}
+              <div className="flex items-center gap-2 p-2.5 rounded-xl bg-[#f0fff4] border border-[#003d29]/10 text-xs text-[#003d29]">
+                <ShieldCheck className="w-4 h-4 text-[#347355] shrink-0" />
+                <span className="text-[11px] font-medium">
+                  ABDM Verified Health Record · Synchronized from Patient Vault
+                </span>
+              </div>
+
+              {/* OCR Extracted Text Section */}
+              <div className="rounded-xl border border-[#003d29]/15 bg-[#f8faf8] p-3.5 space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold text-[#003d29] flex items-center gap-1.5">
+                    <Sparkles className="w-3.5 h-3.5 text-[#347355]" />
+                    <span>Clinical OCR Findings</span>
+                  </span>
+                  <span className="text-[10px] font-bold text-[#347355] bg-[#c9fdd7] px-2 py-0.5 rounded">
+                    Tesseract Verified
+                  </span>
+                </div>
+                {activeDocPreview.ocrText ? (
+                  <pre className="text-xs font-mono text-[#092c20] bg-white p-3 rounded-lg border border-[#003d29]/10 max-h-48 overflow-y-auto whitespace-pre-wrap leading-relaxed">
+                    {activeDocPreview.ocrText}
+                  </pre>
+                ) : (
+                  <p className="text-xs text-[#587366] italic bg-white p-3 rounded-lg border border-[#003d29]/10">
+                    No OCR transcript text found for this record.
+                  </p>
+                )}
+              </div>
+            </div>
+
+            <div className="pt-3 border-t border-[#003d29]/10 flex items-center justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setActiveDocPreview(null)}
+                className="px-4 py-2 bg-[#003d29] hover:bg-[#347355] text-[#f0fff4] rounded-xl text-xs font-bold transition-all cursor-pointer shadow-xs"
+              >
+                Close Record
               </button>
             </div>
           </div>

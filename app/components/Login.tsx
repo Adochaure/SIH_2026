@@ -8,6 +8,7 @@ import {
   Phone,
 } from "lucide-react";
 import { Navbar } from "./Navbar";
+import { useLanguage } from "../lib/languageContext";
 
 export interface LoginProps {
   onSuccess?: (data: { method: "abha" | "mobile"; identifier: string }) => void;
@@ -24,11 +25,11 @@ export const Login: React.FC<LoginProps> = ({
   defaultMethod = "abha",
   defaultIdentifier,
 }) => {
+  const { t, language, setLanguage } = useLanguage();
   const [method, setMethod] = useState<"abha" | "mobile">(defaultMethod);
   const [inputValue, setInputValue] = useState(
     defaultIdentifier ?? (defaultMethod === "abha" ? "12-3456-7890-1234" : "9876543210")
   );
-  const [language, setLanguage] = useState("en");
   const [status, setStatus] = useState<string>("");
   const [statusType, setStatusType] = useState<"info" | "error" | "success">("info");
 
@@ -114,8 +115,6 @@ export const Login: React.FC<LoginProps> = ({
             aria-hidden="true"
           />
 
-      
-
           {/* Illustration */}
           <div className="relative z-0 my-auto py-4 flex items-center justify-center">
             <div className="relative w-full max-w-[320px] sm:max-w-[440px] md:max-w-[480px] lg:max-w-[560px] aspect-[4/3] max-h-[36vh] sm:max-h-[48vh] md:max-h-[57vh]">
@@ -139,13 +138,13 @@ export const Login: React.FC<LoginProps> = ({
           {/* Visual Copy at bottom */}
           <div className="relative z-10 w-full max-w-[450px] mx-auto text-center mt-2">
             <p className="hidden sm:block text-[11px] font-bold uppercase tracking-[0.12em] text-[#6bbf8c] mb-3 sm:mb-5">
-              Care Journey
+              {t("careJourney")}
             </p>
             <h1 className="text-2xl sm:text-3xl lg:text-[40px] font-bold tracking-tight leading-[1.12]">
-              Your health, in one place
+              {t("healthInOnePlace")}
             </h1>
             <p className="hidden sm:block mt-3 text-xs sm:text-[13px] text-[#f0fff4]/70 leading-[1.8] max-w-[390px] mx-auto">
-              Keep your medical history close, so every care decision can feel a little more personal.
+              {t("healthInOnePlaceDesc")}
             </p>
           </div>
         </section>
@@ -160,14 +159,14 @@ export const Login: React.FC<LoginProps> = ({
             <div className="mb-6 sm:mb-9">
               <div className="flex items-center justify-between gap-4 mb-2">
                 <p className="text-[11px] font-bold uppercase tracking-[0.12em] text-[#6bbf8c]">
-                  Welcome back
+                  {t("welcomeBack")}
                 </p>
               </div>
               <h2 className="text-2xl sm:text-3xl lg:text-[34px] font-bold text-[#003d29] tracking-tight leading-[1.2]">
-                Let&apos;s continue<br />your care journey.
+                {t("continueCareJourney")}
               </h2>
               <p className="mt-3 text-xs sm:text-[12px] text-[#587366] leading-[1.7]">
-                Sign in to access your medical history and personalized care.
+                {t("signInSubtitle")}
               </p>
             </div>
 
@@ -188,7 +187,7 @@ export const Login: React.FC<LoginProps> = ({
                     : "text-[#347355] hover:-translate-y-0.5 bg-transparent"
                 }`}
               >
-                Login with ABHA
+                {t("loginWithAbha")}
               </button>
 
               <button
@@ -202,7 +201,7 @@ export const Login: React.FC<LoginProps> = ({
                     : "text-[#347355] hover:-translate-y-0.5 bg-transparent"
                 }`}
               >
-                Login with mobile
+                {t("loginWithMobile")}
               </button>
             </div>
 
@@ -211,7 +210,7 @@ export const Login: React.FC<LoginProps> = ({
               <div className="mb-5 sm:mb-6">
                 <div className="flex items-center justify-between gap-4 mb-2.5 text-[11px] font-bold text-[#003d29]">
                   <label htmlFor="login-value">
-                    {method === "abha" ? "Enter your ABHA ID" : "Enter your mobile number"}
+                    {method === "abha" ? t("enterAbhaId") : t("enterMobileNumber")}
                   </label>
                   <button
                     type="button"
@@ -262,7 +261,7 @@ export const Login: React.FC<LoginProps> = ({
                 type="submit"
                 className="group flex items-center justify-between w-full py-3.5 sm:py-4 pl-5 pr-4 bg-[#003d29] hover:bg-[#347355] text-[#f0fff4] border border-[#003d29] rounded-[10px] text-xs font-bold transition-all duration-200 cursor-pointer hover:shadow-[0_12px_20px_rgba(0,61,41,0.18)] hover:-translate-y-0.5 active:translate-y-0"
               >
-                <span>Continue</span>
+                <span>{t("confirmAndContinue")}</span>
                 <span
                   className="flex items-center justify-center w-[26px] h-[26px] border border-[#f0fff4]/50 rounded-[20%] transition-transform duration-200 group-hover:translate-x-1"
                   aria-hidden="true"
@@ -285,7 +284,7 @@ export const Login: React.FC<LoginProps> = ({
                 }}
                 className="w-full mt-2.5 py-2.5 px-3 bg-[#c9fdd7] hover:bg-[#b5f8c6] text-[#003d29] border border-[#003d29]/20 rounded-[10px] text-[11px] font-bold transition-all cursor-pointer flex items-center justify-center gap-2"
               >
-                <span>⚡ 1-Click Demo: Sign in as Shriram Vaidya</span>
+                <span>⚡ 1-Click Demo: Shriram Vaidya</span>
               </button>
 
               {/* Status Message */}
@@ -311,16 +310,31 @@ export const Login: React.FC<LoginProps> = ({
 
             {/* Signup Link */}
             <p className="text-center text-[11px] text-[#587366]">
-              Don&apos;t have an ABHA ID?{" "}
+              {t("newToAbha")}{" "}
               <button
                 type="button"
                 onClick={onRegisterClick}
                 className="ml-1 text-[#347355] hover:text-[#003d29] font-bold underline underline-offset-4 cursor-pointer inline-flex items-center gap-1 group"
               >
-                <span>Create one here</span>
+                <span>{t("createAbha")}</span>
                 <ArrowRight className="w-3 h-3 stroke-[2.2] inline group-hover:translate-x-0.5 transition-transform" />
               </button>
             </p>
+
+            {/* Link to Doctor Login */}
+            {onDoctorLogin && (
+              <p className="text-center text-[11px] text-[#587366] mt-3 pt-3 border-t border-[#003d29]/10">
+                {t("doctorOrHospitalStaff")}{" "}
+                <button
+                  type="button"
+                  onClick={onDoctorLogin}
+                  className="ml-1 text-[#347355] hover:text-[#003d29] font-bold underline underline-offset-4 cursor-pointer inline-flex items-center gap-1 group"
+                >
+                  <span>{t("switchToDoctorLogin")}</span>
+                  <ArrowRight className="w-3 h-3 stroke-[2.2] inline group-hover:translate-x-0.5 transition-transform" />
+                </button>
+              </p>
+            )}
           </div>
         </section>
       </main>

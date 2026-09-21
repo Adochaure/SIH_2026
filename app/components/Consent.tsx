@@ -14,6 +14,7 @@ import {
   Sparkles,
 } from "lucide-react";
 import { Navbar } from "./Navbar";
+import { useLanguage } from "../lib/languageContext";
 
 export interface ConsentProps {
   onBack?: () => void;
@@ -25,9 +26,10 @@ export interface ConsentProps {
 export const Consent: React.FC<ConsentProps> = ({
   onBack,
   onConsent,
-  step = "Step 1 of 3",
+  step = "Step 2 of 3",
   patientName = "Shriram Vaidya",
 }) => {
+  const { t } = useLanguage();
   const [isPlayingAudio, setIsPlayingAudio] = useState(false);
   const [hasConsented, setHasConsented] = useState(false);
   const [statusMessage, setStatusMessage] = useState("");
@@ -35,7 +37,7 @@ export const Consent: React.FC<ConsentProps> = ({
   const handlePlayAudio = () => {
     setIsPlayingAudio((prev) => !prev);
     if (!isPlayingAudio) {
-      setStatusMessage("Audio explanation is now playing in English / Hindi...");
+      setStatusMessage("Audio explanation is now playing in Marathi / Hindi / English...");
     } else {
       setStatusMessage("Audio playback paused.");
     }
@@ -47,30 +49,25 @@ export const Consent: React.FC<ConsentProps> = ({
     if (onConsent) {
       setTimeout(() => {
         onConsent();
-      }, 500);
+      }, 400);
     }
   };
 
   const consentPoints = [
     {
       icon: <FileText className="w-5 h-5 text-[#347355]" />,
-      title: "What we collect",
-      desc: "Your voice responses, symptoms and uploaded clinical documents.",
+      title: t("whatWeCollect"),
+      desc: t("whatWeCollectDesc"),
     },
     {
       icon: <Activity className="w-5 h-5 text-[#347355]" />,
-      title: "Why we collect it",
-      desc: "To create a structured, clear clinical summary for your doctor.",
+      title: t("howItIsUsed"),
+      desc: t("howItIsUsedDesc"),
     },
     {
       icon: <ShieldCheck className="w-5 h-5 text-[#347355]" />,
-      title: "Who can access it",
-      desc: "Only authorised doctors and care staff directly involved in your treatment.",
-    },
-    {
-      icon: <Clock className="w-5 h-5 text-[#347355]" />,
-      title: "Your privacy",
-      desc: "Voice recordings are deleted after clinical summarisation is processed.",
+      title: t("dataProtection"),
+      desc: t("dataProtectionDesc"),
     },
   ];
 
@@ -79,7 +76,7 @@ export const Consent: React.FC<ConsentProps> = ({
       {/* Top Navigation Bar with Profile Icon */}
       <Navbar
         isLoggedIn={true}
-        patientName={patientName || "Priya Sharma"}
+        patientName={patientName || "Shriram Vaidya"}
         onProfileClick={onBack}
       />
 
@@ -97,22 +94,22 @@ export const Consent: React.FC<ConsentProps> = ({
               className="inline-flex items-center gap-2 mb-6 text-xs sm:text-sm font-bold text-[#347355] hover:text-[#003d29] transition-colors cursor-pointer group"
             >
               <ArrowLeft className="w-4 h-4 transition-transform group-hover:-translate-x-1" />
-              <span>Back to sign in</span>
+              <span>← {t("cancel")}</span>
             </button>
 
             {/* Step indicator */}
             <div className="flex items-center gap-2 mb-2">
               <span className="text-[11px] font-bold uppercase tracking-widest text-[#347355] bg-[#c9fdd7]/70 px-2.5 py-0.5 rounded-full border border-[#003d29]/10">
-                {step}
+                {t("step2of3")}
               </span>
             </div>
 
             <h1 className="text-2xl sm:text-3xl lg:text-4xl font-bold text-[#003d29] tracking-tight leading-tight">
-              Your consent matters
+              {t("abdmConsentRequest")}
             </h1>
 
             <p className="mt-3 mb-6 text-xs sm:text-sm text-[#587366] leading-relaxed">
-              Before your consultation, please review how Carelink uses your information to help your doctor understand your health history.
+              {t("consentRequestSubtitle")}
             </p>
 
             {/* Itemized consent points */}
@@ -148,12 +145,12 @@ export const Consent: React.FC<ConsentProps> = ({
                 {isPlayingAudio ? (
                   <>
                     <VolumeX className="w-4 h-4 text-[#003d29]" />
-                    <span>Pause explanation</span>
+                    <span>Pause Audio</span>
                   </>
                 ) : (
                   <>
                     <Volume2 className="w-4 h-4 text-[#347355]" />
-                    <span>Play explanation</span>
+                    <span>Play Audio</span>
                   </>
                 )}
               </button>
@@ -164,7 +161,7 @@ export const Consent: React.FC<ConsentProps> = ({
                 className="flex-[1.2] flex items-center justify-center gap-2 py-3.5 px-4 rounded-xl bg-[#003d29] hover:bg-[#347355] text-[#f0fff4] text-xs sm:text-sm font-bold shadow-lg shadow-[#003d29]/15 hover:shadow-[#003d29]/25 transition-all duration-200 cursor-pointer transform hover:-translate-y-0.5 active:translate-y-0"
               >
                 <CheckCircle2 className="w-4 h-4 text-[#6bbf8c]" />
-                <span>I understand &amp; give consent</span>
+                <span>{t("grantConsent")}</span>
               </button>
             </div>
 
@@ -227,7 +224,7 @@ export const Consent: React.FC<ConsentProps> = ({
 
           {/* Bottom Note */}
           <p className="hidden sm:block relative z-10 text-right w-full text-[11px] text-[#f0fff4]/70 max-w-[260px] ml-auto leading-relaxed">
-            Your information is handled with care and encrypted at every step.
+            {t("dataProtectionDesc")}
           </p>
         </aside>
       </main>
@@ -236,4 +233,3 @@ export const Consent: React.FC<ConsentProps> = ({
 };
 
 export default Consent;
-

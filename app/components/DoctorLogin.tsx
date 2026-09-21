@@ -8,6 +8,7 @@ import {
   HelpCircle,
 } from "lucide-react";
 import { Navbar } from "./Navbar";
+import { useLanguage } from "../lib/languageContext";
 
 export interface DoctorLoginProps {
   onSuccess?: (data: { mobile: string }) => void;
@@ -20,8 +21,8 @@ export const DoctorLogin: React.FC<DoctorLoginProps> = ({
   onPatientLogin,
   onRequestAccess,
 }) => {
+  const { t, language, setLanguage } = useLanguage();
   const [phone, setPhone] = useState("");
-  const [language, setLanguage] = useState("en");
   const [status, setStatus] = useState<string>("");
   const [statusType, setStatusType] = useState<"info" | "error" | "success">("info");
 
@@ -60,9 +61,9 @@ export const DoctorLogin: React.FC<DoctorLoginProps> = ({
         onLanguageChange={setLanguage}
       />
 
-      {/* Main Page Shell: Same Exact Layout & Design */}
+      {/* Main Page Shell */}
       <main className="flex-1 grid grid-cols-1 md:grid-cols-[minmax(360px,0.92fr)_minmax(460px,1.08fr)] overflow-hidden">
-        {/* Visual Panel for Doctors: with doctorlogin.png */}
+        {/* Visual Panel for Doctors */}
         <section
           aria-label="Carelink doctor portal introduction"
           className="relative flex flex-col justify-between min-h-[300px] sm:min-h-[440px] md:min-h-full p-6 sm:p-10 lg:p-16 text-[#f0fff4] bg-[#003d29] overflow-hidden rounded-b-[30%] md:rounded-b-none md:rounded-tr-[30%] md:rounded-br-[30%]"
@@ -77,14 +78,12 @@ export const DoctorLogin: React.FC<DoctorLoginProps> = ({
             aria-hidden="true"
           />
 
-          
-
-          {/* Centered Doctor Illustration: doctorlogin.png */}
+          {/* Centered Doctor Illustration */}
           <div className="relative z-0 my-auto py-4 flex items-center justify-center">
             <div className="relative w-full max-w-[320px] sm:max-w-[440px] md:max-w-[480px] lg:max-w-[560px] aspect-[4/3] max-h-[36vh] sm:max-h-[48vh] md:max-h-[57vh]">
               <Image
                 src="/assets/doctorlogin.png"
-                alt="Doctor reviewing complete patient history and digital health summary"
+                alt="Doctor reviewing complete patient history"
                 fill
                 sizes="(max-width: 768px) 100vw, 560px"
                 priority
@@ -102,13 +101,13 @@ export const DoctorLogin: React.FC<DoctorLoginProps> = ({
           {/* Visual Copy for Doctors at bottom */}
           <div className="relative z-10 w-full max-w-[450px] mx-auto text-center mt-2">
             <p className="hidden sm:block text-[11px] font-bold uppercase tracking-[0.12em] text-[#6bbf8c] mb-3 sm:mb-5">
-              Clinical Workspace
+              {t("doctorWorkstation")}
             </p>
             <h1 className="text-2xl sm:text-3xl lg:text-[40px] font-bold tracking-tight leading-[1.12]">
-              Instant patient summaries, right at your fingertips
+              {t("doctorPortalTitle")}
             </h1>
             <p className="hidden sm:block mt-3 text-xs sm:text-[13px] text-[#f0fff4]/70 leading-[1.8] max-w-[390px] mx-auto">
-              Review organized medical histories, verified ABHA records, and patient vitals before every consultation.
+              {t("doctorPortalDesc")}
             </p>
           </div>
         </section>
@@ -123,35 +122,30 @@ export const DoctorLogin: React.FC<DoctorLoginProps> = ({
             <div className="mb-6 sm:mb-9">
               <div className="flex items-center justify-between gap-4 mb-2">
                 <p className="text-[11px] font-bold uppercase tracking-[0.12em] text-[#6bbf8c]">
-                  Doctor Portal
+                  {t("doctorPortal")}
                 </p>
               </div>
               <h2 className="text-2xl sm:text-3xl lg:text-[34px] font-bold text-[#003d29] tracking-tight leading-[1.2]">
-                Welcome back,<br />Doctor.
+                {t("doctorSignInHeading")}
               </h2>
               <p className="mt-3 text-xs sm:text-[12px] text-[#587366] leading-[1.7]">
-                Sign in with your registered mobile number to access your consultation queue and patient records.
+                {t("doctorSignInDesc")}
               </p>
             </div>
 
-            {/* Direct Number Login Form (No ABHA switch needed) */}
+            {/* Direct Number Login Form */}
             <form onSubmit={handleSubmit} noValidate>
               <div className="mb-5 sm:mb-6">
                 <div className="flex items-center justify-between gap-4 mb-2.5 text-[11px] font-bold text-[#003d29]">
                   <label htmlFor="doctor-mobile">
-                    Enter your registered mobile number
+                    {t("registeredMobileNumber")}
                   </label>
-                  <a
-                    href="#"
-                    className="text-[#347355] hover:text-[#003d29] text-[10px] font-normal underline underline-offset-4 inline-flex items-center gap-1"
-                  >
-                    <span>Need assistance?</span>
-                    <HelpCircle className="w-3 h-3 text-[#347355] opacity-75" />
-                  </a>
+                  <span className="text-[#347355] text-[10px] font-mono">
+                    Demo: 98765 00001
+                  </span>
                 </div>
 
                 <div className="relative">
-                  {/* Proper Vector Icon for Phone */}
                   <div className="absolute left-4 top-1/2 -translate-y-1/2 text-[#347355] flex items-center justify-center pointer-events-none">
                     <Phone className="w-[18px] h-[18px]" strokeWidth={1.8} />
                   </div>
@@ -167,19 +161,19 @@ export const DoctorLogin: React.FC<DoctorLoginProps> = ({
                       setPhone(e.target.value);
                       if (status) setStatus("");
                     }}
-                    placeholder="e.g. 98765 43210"
-                    className="w-full py-3.5 sm:py-4 pl-12 pr-4 text-xs sm:text-sm text-[#003d29] bg-white/60 hover:bg-white focus:bg-white border border-[#003d29]/15 rounded-[10px] outline-none transition-all focus:border-[#6bbf8c] focus:ring-4 focus:ring-[#6bbf8c]/20 placeholder-[#587366]/60"
+                    placeholder="e.g. 98765 00001"
+                    className="w-full py-3.5 sm:py-4 pl-12 pr-4 text-xs sm:text-sm text-[#003d29] bg-white/60 hover:bg-white focus:bg-white border border-[#003d29]/15 rounded-[10px] outline-none transition-all focus:border-[#6bbf8c] focus:ring-4 focus:ring-[#6bbf8c]/20 placeholder-[#587366]/60 font-mono"
                     required
                   />
                 </div>
               </div>
 
-              {/* Continue Button with Proper Arrow Icon */}
+              {/* Continue Button */}
               <button
                 type="submit"
                 className="group flex items-center justify-between w-full py-3.5 sm:py-4 pl-5 pr-4 bg-[#003d29] hover:bg-[#347355] text-[#f0fff4] border border-[#003d29] rounded-[10px] text-xs font-bold transition-all duration-180 cursor-pointer hover:shadow-[0_12px_20px_rgba(0,61,41,0.18)] hover:-translate-y-0.5 active:translate-y-0"
               >
-                <span>Continue to Workstation</span>
+                <span>{t("verifyDoctorLogin")}</span>
                 <span
                   className="flex items-center justify-center w-[26px] h-[26px] border border-[#f0fff4]/50 rounded-[20%] transition-transform duration-180 group-hover:translate-x-1"
                   aria-hidden="true"
@@ -201,7 +195,7 @@ export const DoctorLogin: React.FC<DoctorLoginProps> = ({
                 }}
                 className="w-full mt-2.5 py-2.5 px-3 bg-[#c9fdd7] hover:bg-[#b5f8c6] text-[#003d29] border border-[#003d29]/20 rounded-[10px] text-[11px] font-bold transition-all cursor-pointer flex items-center justify-center gap-2"
               >
-                <span>⚡ 1-Click Demo: Sign in as Dr. Ananya Kulkarni</span>
+                <span>⚡ 1-Click Demo: Dr. Ananya Kulkarni</span>
               </button>
 
               {/* Status Message */}
@@ -225,18 +219,20 @@ export const DoctorLogin: React.FC<DoctorLoginProps> = ({
               <span>or</span>
             </div>
 
-            {/* Request Access / Registration */}
-            <p className="text-center text-[11px] text-[#587366]">
-              New to Carelink Provider Network?{" "}
-              <button
-                type="button"
-                onClick={onRequestAccess}
-                className="ml-1 text-[#347355] hover:text-[#003d29] font-bold underline underline-offset-4 cursor-pointer inline-flex items-center gap-1 group"
-              >
-                <span>Request access here</span>
-                <ArrowRight className="w-3 h-3 stroke-[2.2] inline group-hover:translate-x-0.5 transition-transform" />
-              </button>
-            </p>
+            {/* Link back to Patient Login */}
+            {onPatientLogin && (
+              <p className="text-center text-[11px] text-[#587366]">
+                {t("areYouPatient")}{" "}
+                <button
+                  type="button"
+                  onClick={onPatientLogin}
+                  className="ml-1 text-[#347355] hover:text-[#003d29] font-bold underline underline-offset-4 cursor-pointer inline-flex items-center gap-1 group"
+                >
+                  <span>{t("switchToPatientLogin")}</span>
+                  <ArrowRight className="w-3 h-3 stroke-[2.2] inline group-hover:translate-x-0.5 transition-transform" />
+                </button>
+              </p>
+            )}
           </div>
         </section>
       </main>
@@ -245,4 +241,3 @@ export const DoctorLogin: React.FC<DoctorLoginProps> = ({
 };
 
 export default DoctorLogin;
-
