@@ -999,7 +999,7 @@ export const PatientDashboard: React.FC<PatientDashboardProps> = ({
               {/* Interactive Visual Map Canvas Grid & Side Drawer */}
               <div className="grid grid-cols-1 lg:grid-cols-3 gap-5 items-stretch">
                 {/* Visual Map Box (2 columns on LG) */}
-                <div className="lg:col-span-2 relative min-h-[340px] sm:min-h-[400px] rounded-2xl bg-[#e5f5ea] border border-[#003d29]/20 overflow-hidden shadow-inner flex flex-col justify-between p-4 select-none">
+                <div className="lg:col-span-2 relative min-h-[360px] sm:min-h-[420px] rounded-2xl bg-[#e5f5ea] border border-[#003d29]/20 overflow-hidden shadow-inner flex flex-col justify-between p-4 select-none">
                   {/* Map Graphic Overlay Background (Stylized roads & radius rings) */}
                   <div className="absolute inset-0 pointer-events-none opacity-40">
                     <svg className="w-full h-full" xmlns="http://www.w3.org/2000/svg">
@@ -1019,6 +1019,79 @@ export const PatientDashboard: React.FC<PatientDashboardProps> = ({
                     </svg>
                   </div>
 
+                  {/* 🛣️ Interactive Navigation Route Overlay Line (Connects Patient -> Selected Doctor) */}
+                  {selectedMapDoctor && (() => {
+                    const docIdx = KNOWN_DOCTORS.findIndex((d) => d.id === selectedMapDoctor.id);
+                    const mapPositions = [
+                      { top: 28, left: 32 }, // Dr. Ananya (1.2 km)
+                      { top: 22, left: 72 }, // Dr. Rajesh (2.4 km)
+                      { top: 70, left: 26 }, // Dr. Meera (3.8 km)
+                      { top: 65, left: 75 }, // Dr. Vikram (1.9 km)
+                      { top: 78, left: 48 }, // Dr. Sunita (2.1 km)
+                      { top: 18, left: 48 }, // Dr. Amit (4.5 km)
+                    ];
+                    const pos = mapPositions[(docIdx >= 0 ? docIdx : 0) % mapPositions.length];
+                    const startX = 50;
+                    const startY = 50;
+                    const endX = pos.left;
+                    const endY = pos.top;
+                    // Compute bezier control point to curve around center roads
+                    const ctrlX = (startX + endX) / 2 + (endX > 50 ? 6 : -6);
+                    const ctrlY = (startY + endY) / 2 + (endY > 50 ? -6 : 6);
+                    const pathD = `M ${startX} ${startY} Q ${ctrlX} ${ctrlY} ${endX} ${endY}`;
+                    const midX = (startX + endX) / 2;
+                    const midY = (startY + endY) / 2;
+
+                    return (
+                      <>
+                        <svg
+                          className="absolute inset-0 w-full h-full pointer-events-none z-10"
+                          viewBox="0 0 100 100"
+                          preserveAspectRatio="none"
+                        >
+                          {/* Route Outer Track / Glow */}
+                          <path
+                            d={pathD}
+                            fill="none"
+                            stroke="#003d29"
+                            strokeWidth="2.5"
+                            strokeLinecap="round"
+                            strokeDasharray="2 2"
+                            className="opacity-50"
+                          />
+                          {/* Route Inner Pulse Path */}
+                          <path
+                            d={pathD}
+                            fill="none"
+                            stroke="#10b981"
+                            strokeWidth="1.2"
+                            strokeLinecap="round"
+                            strokeDasharray="1.5 1.5"
+                            className="animate-pulse"
+                          />
+                        </svg>
+
+                        {/* Midpoint Navigation Info Badge */}
+                        <div
+                          style={{ left: `${midX}%`, top: `${midY}%` }}
+                          className="absolute -translate-x-1/2 -translate-y-1/2 z-20 pointer-events-none"
+                        >
+                          <div className="px-2.5 py-1 rounded-full bg-[#003d29] text-[#c9fdd7] text-[10px] font-extrabold shadow-lg border border-[#c9fdd7]/40 flex items-center gap-1.5 animate-bounce">
+                            <Navigation className="w-3 h-3 text-amber-300 fill-amber-300" />
+                            <span>
+                              Route: {selectedMapDoctor.distanceKm} · ~
+                              {Math.max(
+                                3,
+                                Math.round(parseFloat(selectedMapDoctor.distanceKm || "1.2") * 2.5)
+                              )}{" "}
+                              mins
+                            </span>
+                          </div>
+                        </div>
+                      </>
+                    );
+                  })()}
+
                   {/* Radius Legend Badge top left */}
                   <div className="relative z-10 flex items-center justify-between w-full pointer-events-none">
                     <div className="px-3 py-1 rounded-xl bg-white/90 backdrop-blur-xs border border-[#003d29]/15 text-[11px] font-semibold text-[#003d29] shadow-xs">
@@ -1030,7 +1103,7 @@ export const PatientDashboard: React.FC<PatientDashboardProps> = ({
                   </div>
 
                   {/* Center Patient Location Pin */}
-                  <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-10 flex flex-col items-center">
+                  <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-20 flex flex-col items-center">
                     <div className="relative flex items-center justify-center">
                       <span className="absolute w-10 h-10 rounded-full bg-[#347355]/30 animate-ping" />
                       <div className="w-8 h-8 rounded-full bg-[#003d29] border-2 border-white text-white flex items-center justify-center shadow-lg font-bold text-xs">
@@ -1075,31 +1148,38 @@ export const PatientDashboard: React.FC<PatientDashboardProps> = ({
                             <span className="absolute -inset-2 rounded-full bg-[#347355]/40 animate-pulse ring-2 ring-[#003d29]" />
                           )}
 
-                          <div
-                            style={{ backgroundColor: doc.avatarColor || '#003d29' }}
-                            className={`w-11 h-11 rounded-full border-2 ${
-                              isSelected ? 'border-amber-400 ring-4 ring-[#003d29]/30' : 'border-white'
-                            } text-white font-bold flex items-center justify-center text-xs shadow-md transition-all group-hover:shadow-xl`}
-                          >
-                            {doc.name.split(" ").slice(-1)[0][0]}
+                          {/* Avatar Circle Container */}
+                          <div className="relative flex items-center justify-center">
+                            <div
+                              style={{ backgroundColor: doc.avatarColor || '#003d29' }}
+                              className={`w-11 h-11 sm:w-12 sm:h-12 rounded-full border-2 ${
+                                isSelected ? 'border-amber-400 ring-4 ring-[#003d29]/40 scale-105' : 'border-white'
+                              } text-white font-bold flex items-center justify-center text-xs shadow-md transition-all group-hover:shadow-xl`}
+                            >
+                              {doc.name.split(" ").slice(-1)[0][0]}
+                            </div>
+
+                            {/* Rating Badge (Top Left - NO OVERLAP WITH BOTTOM DISTANCE PILL) */}
+                            <span className="absolute -top-2 -left-2 px-1.5 py-0.5 rounded-full bg-white text-[#003d29] text-[9px] font-bold border border-[#003d29]/20 shadow-sm flex items-center gap-0.5 z-10">
+                              <Star className="w-2.5 h-2.5 fill-amber-400 text-amber-500" />
+                              {doc.rating || 4.9}
+                            </span>
+
+                            {/* Live Queue Badge (Top Right - NO OVERLAP WITH BOTTOM DISTANCE PILL) */}
+                            <span className="absolute -top-2 -right-2 px-1.5 py-0.5 rounded-full bg-amber-400 text-[#003d29] text-[9px] font-extrabold border border-white shadow-sm z-10 whitespace-nowrap">
+                              {doc.currentPatientCount || 2} Wait
+                            </span>
                           </div>
 
-                          {/* Live Queue Badge Overlay */}
-                          <span className="absolute -bottom-1 -right-1 px-1.5 py-0.5 rounded-full bg-amber-400 text-[#003d29] text-[9px] font-extrabold border border-white shadow-xs">
-                            {doc.currentPatientCount || 2} Wait
-                          </span>
-
-                          {/* Rating Badge Top Left */}
-                          <span className="absolute -top-1 -left-1 px-1 py-0.5 rounded-md bg-white text-[#003d29] text-[9px] font-bold border border-[#003d29]/15 shadow-xs flex items-center gap-0.5">
-                            <Star className="w-2.5 h-2.5 fill-amber-400 text-amber-500" />
-                            {doc.rating || 4.9}
-                          </span>
-
-                          {/* Label Pill */}
-                          <div className={`mt-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold shadow-md whitespace-nowrap transition-colors ${
-                            isSelected ? "bg-[#003d29] text-white" : "bg-white text-[#003d29] border border-[#003d29]/20"
+                          {/* Clear Unobstructed Bottom Label Pill (Doctor Name + Distance) */}
+                          <div className={`mt-1.5 px-2.5 py-1 rounded-full text-[10px] font-bold shadow-md whitespace-nowrap transition-all flex items-center gap-1.5 border z-10 ${
+                            isSelected
+                              ? "bg-[#003d29] text-white border-amber-400 ring-2 ring-[#003d29]/20"
+                              : "bg-white text-[#003d29] border-[#003d29]/20 group-hover:bg-[#f0fff4]"
                           }`}>
-                            {doc.name.split(" ")[1]} · {doc.distanceKm}
+                            <span className="truncate max-w-[85px]">{doc.name.split(" ")[1]}</span>
+                            <span className="w-1 h-1 rounded-full bg-amber-400" />
+                            <span className="text-[#347355] font-extrabold text-[10px]">{doc.distanceKm}</span>
                           </div>
                         </div>
                       </div>
@@ -1109,7 +1189,7 @@ export const PatientDashboard: React.FC<PatientDashboardProps> = ({
                   {/* Map Controls Bottom Right */}
                   <div className="relative z-10 self-end flex items-center gap-1.5 pointer-events-none">
                     <span className="px-2.5 py-1 rounded-lg bg-white/90 text-[#003d29] text-[10px] font-bold border border-[#003d29]/15 shadow-xs">
-                      Click doctor pin to inspect profile
+                      Click doctor pin to view navigation route
                     </span>
                   </div>
                 </div>
