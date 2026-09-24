@@ -1102,8 +1102,7 @@ export const PatientDashboard: React.FC<PatientDashboardProps> = ({
                     </div>
                   </div>
 
-                  {/* Center Patient Location Pin */}
-                  <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-10 flex flex-col items-center">
+                  {/* 📍 Patient Pin (Center) */}
                   <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-20 flex flex-col items-center">
                     <div className="relative flex items-center justify-center">
                       <span className="absolute w-10 h-10 rounded-full bg-[#347355]/30 animate-ping" />
@@ -1149,7 +1148,7 @@ export const PatientDashboard: React.FC<PatientDashboardProps> = ({
                             <span className="absolute -inset-2 rounded-full bg-[#347355]/40 animate-pulse ring-2 ring-[#003d29]" />
                           )}
 
-                          {/* Avatar Circle Container */}
+                          {/* Avatar Circle Container with Badges */}
                           <div className="relative flex items-center justify-center">
                             <div
                               style={{ backgroundColor: doc.avatarColor || '#003d29' }}
@@ -1160,41 +1159,42 @@ export const PatientDashboard: React.FC<PatientDashboardProps> = ({
                               {doc.name.split(" ").slice(-1)[0][0]}
                             </div>
 
-                          {/* Rating Badge (Top Left) */}
-                          <span className="absolute -top-2 -left-2 px-1.5 py-0.5 rounded-full bg-white text-[#003d29] text-[9px] font-bold border border-[#003d29]/20 shadow-sm flex items-center gap-0.5 z-10">
-                            <Star className="w-2.5 h-2.5 fill-amber-400 text-amber-500" />
-                            {doc.rating || 4.9}
-                          </span>
+                            {/* Rating Badge (Top Left) */}
+                            <span className="absolute -top-2 -left-2 px-1.5 py-0.5 rounded-full bg-white text-[#003d29] text-[9px] font-bold border border-[#003d29]/20 shadow-sm flex items-center gap-0.5 z-10">
+                              <Star className="w-2.5 h-2.5 fill-amber-400 text-amber-500" />
+                              {doc.rating || 4.9}
+                            </span>
 
-                          {/* Live Queue Badge (Top Right) */}
-                          <span className="absolute -top-2 -right-2 px-1.5 py-0.5 rounded-full bg-amber-400 text-[#003d29] text-[9px] font-extrabold border border-white shadow-sm z-10 whitespace-nowrap">
-                            {doc.currentPatientCount || 2} Wait
-                          </span>
-                        </div>
+                            {/* Live Queue Badge (Top Right) */}
+                            <span className="absolute -top-2 -right-2 px-1.5 py-0.5 rounded-full bg-amber-400 text-[#003d29] text-[9px] font-extrabold border border-white shadow-sm z-10 whitespace-nowrap">
+                              {doc.currentPatientCount || 2} Wait
+                            </span>
+                          </div>
 
-                        {/* Clear Unobstructed Bottom Label Pill */}
-                        <div className={`mt-1.5 px-2.5 py-1 rounded-full text-[10px] font-bold shadow-md whitespace-nowrap transition-all flex items-center gap-1.5 border z-10 ${
-                          isSelected
-                            ? "bg-[#003d29] text-white border-amber-400 ring-2 ring-[#003d29]/20"
-                            : "bg-white text-[#003d29] border-[#003d29]/20 group-hover:bg-[#f0fff4]"
-                        }`}>
-                          <span className="truncate max-w-[85px]">{doc.name.split(" ")[1]}</span>
-                          <span className="w-1 h-1 rounded-full bg-amber-400" />
-                          <span className="text-[#347355] font-extrabold text-[10px]">{doc.distanceKm}</span>
+                          {/* Clear Unobstructed Bottom Label Pill (Doctor Name + Distance) */}
+                          <div className={`mt-1.5 px-2.5 py-1 rounded-full text-[10px] font-bold shadow-md whitespace-nowrap transition-all flex items-center gap-1.5 border z-10 ${
+                            isSelected
+                              ? "bg-[#003d29] text-white border-amber-400 ring-2 ring-[#003d29]/20"
+                              : "bg-white text-[#003d29] border-[#003d29]/20 group-hover:bg-[#f0fff4]"
+                          }`}>
+                            <span className="truncate max-w-[85px]">{doc.name.split(" ")[1] || doc.name}</span>
+                            <span className="w-1 h-1 rounded-full bg-amber-400" />
+                            <span className="text-[#347355] font-extrabold text-[10px]">{doc.distanceKm}</span>
+                          </div>
                         </div>
                       </div>
-                    </div>
-                  );
-                })}
+                    );
+                  })}
+                
 
-                {/* Map Controls Bottom Right */}
-                <div className="relative z-10 self-end flex items-center gap-1.5 pointer-events-none">
-                  <span className="px-2.5 py-1 rounded-lg bg-white/90 text-[#003d29] text-[10px] font-bold border border-[#003d29]/15 shadow-xs">
-                    Click doctor pin to view navigation route
-                  </span>
+                  {/* Map Controls Bottom Right */}
+                  <div className="relative z-10 self-end flex items-center gap-1.5 pointer-events-none">
+                    <span className="px-2.5 py-1 rounded-lg bg-white/90 text-[#003d29] text-[10px] font-bold border border-[#003d29]/15 shadow-xs">
+                      Click doctor pin to inspect profile
+                      Click doctor pin to view navigation route
+                    </span>
+                  </div>
                 </div>
-              </div>
-            </div>
 
                 {/* Selected Doctor Drawer / Card (1 column on LG) */}
                 {selectedMapDoctor && (

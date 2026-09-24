@@ -33,12 +33,9 @@ import {
   Edit2,
   AlertTriangle,
   Lock,
-  Share2,
-  Send,
-  UserCheck,
 } from "lucide-react";
 import { Navbar } from "./Navbar";
-import { demoStore, PrescriptionItem, AttachedDocument, ConsultationRecord, DoctorProfile, KNOWN_DOCTORS } from "../lib/demoStore";
+import { demoStore, PrescriptionItem, AttachedDocument, ConsultationRecord } from "../lib/demoStore";
 import QRCode from "qrcode";
 import { useLanguage } from "../lib/languageContext";
 
@@ -136,15 +133,6 @@ export const DoctorDashboard: React.FC<DoctorDashboardProps> = ({
     { id: "rx-2", name: "Tab. Paracetamol 650mg", dosage: "1 Tablet", frequency: "SOS (as needed)", duration: "3 days" },
   ]);
   const [consultationSuccessMsg, setConsultationSuccessMsg] = useState("");
-
-  // ABDM HPR Referral Modal State
-  const [isReferralModalOpen, setIsReferralModalOpen] = useState(false);
-  const [selectedReferralDoctor, setSelectedReferralDoctor] = useState<DoctorProfile | null>(
-    KNOWN_DOCTORS[1] || null
-  );
-  const [referralReason, setReferralReason] = useState("");
-  const [referralSearchQuery, setReferralSearchQuery] = useState("");
-
   // Navigation state: "dashboard" | "patients" | "settings"
   const [activeNav, setActiveNav] = useState<"dashboard" | "patients" | "settings">("dashboard");
 
@@ -1156,12 +1144,6 @@ export const DoctorDashboard: React.FC<DoctorDashboardProps> = ({
                           <span>EMERGENCY FAST-TRACK</span>
                         </span>
                       )}
-                      {selectedPatient.consultationRef?.isReferred && (
-                        <span className="px-3 py-1 bg-indigo-100 text-indigo-900 border border-indigo-300 rounded-lg text-xs font-bold flex items-center gap-1.5 shadow-xs">
-                          <Share2 className="w-3.5 h-3.5 text-indigo-700 shrink-0" />
-                          <span>↩️ Referred via ABDM HPR</span>
-                        </span>
-                      )}
                       <span className="px-3 py-1 bg-[#f0fff4] text-[#003d29] border border-[#003d29]/15 rounded-lg text-xs font-bold">
                         Case #{selectedPatient.caseId}
                       </span>
@@ -1177,27 +1159,6 @@ export const DoctorDashboard: React.FC<DoctorDashboardProps> = ({
                       )}
                     </div>
                   </div>
-
-                  {/* Clinical HPR Referral Transfer Notice Banner */}
-                  {selectedPatient.consultationRef?.isReferred && (
-                    <div className="p-4 bg-indigo-50 border border-indigo-200 rounded-2xl text-xs text-indigo-950 flex items-start gap-3 shadow-xs animate-fade-in">
-                      <Share2 className="w-5 h-5 text-indigo-700 shrink-0 mt-0.5" />
-                      <div>
-                        <strong className="block text-indigo-900 font-bold text-sm">
-                          ↩️ ABDM HPR Case Referral Notice:
-                        </strong>
-                        <p className="mt-0.5 text-indigo-800 text-xs">
-                          Referred from <strong>{selectedPatient.consultationRef.referralDetails?.referredFromDoctorName}</strong> ({selectedPatient.consultationRef.referralDetails?.referredFromSpecialty}) at {selectedPatient.consultationRef.referralDetails?.referredAt}.
-                        </p>
-                        <p className="mt-1.5 font-mono text-[11px] text-indigo-900 bg-white/80 p-2.5 rounded-xl border border-indigo-200">
-                          &ldquo;{selectedPatient.consultationRef.referralDetails?.reason}&rdquo;
-                        </p>
-                        <span className="inline-block mt-1 text-[10px] text-indigo-700 font-bold">
-                          Verified HPR Target ID: {selectedPatient.consultationRef.referralDetails?.referredToHprId}
-                        </span>
-                      </div>
-                    </div>
-                  )}
 
                 {/* Core Navigation Tabs inside Patient File: Case Details, Health Timeline, Family Tree */}
                 <div className="flex items-center gap-2 p-1.5 bg-[#e8efea] rounded-xl border border-[#003d29]/10">
@@ -1700,54 +1661,40 @@ export const DoctorDashboard: React.FC<DoctorDashboardProps> = ({
                         </div>
                       </div>
 
-                      {/* CONFIRM CONSULTATION & REFERRAL CTAs */}
+                      {/* CONFIRM CONSULTATION CTA */}
                       <div className="pt-3 border-t border-[#003d29]/10 flex flex-col sm:flex-row items-center justify-between gap-3">
                         <span className="text-[11px] text-[#587366]">
-                          Confirming saves diagnosis to ABDM timeline, or refer case to an ABDM HPR specialist.
+                          Confirming saves diagnosis & prescription directly into patient&apos;s ABDM timeline.
                         </span>
-                        <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5 w-full sm:w-auto">
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setSelectedReferralDoctor(KNOWN_DOCTORS[1]);
-                              setIsReferralModalOpen(true);
-                            }}
-                            className="px-4 py-3 bg-[#f0fff4] hover:bg-[#c9fdd7] text-[#003d29] border border-[#003d29]/25 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-2 shadow-xs"
-                          >
-                            <Share2 className="w-4 h-4 text-[#347355]" />
-                            <span>↩️ Refer to HPR Specialist</span>
-                          </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (selectedPatient.consultationRef) {
+                              demoStore.completeConsultation(selectedPatient.consultationRef.id, {
+                                doctorName,
+                                doctorHospital: hospital,
+                                doctorDepartment: department,
+                                diagnosis: doctorDiagnosis || "Acute Upper Respiratory Tract Infection",
+                                clinicalNotes:
+                                  doctorNotes ||
+                                  "Patient examined in OPD Room 3. Prescribed symptomatic medications. Review if symptoms persist.",
+                                prescriptions,
+                              });
 
-                          <button
-                            type="button"
-                            onClick={() => {
-                              if (selectedPatient.consultationRef) {
-                                demoStore.completeConsultation(selectedPatient.consultationRef.id, {
-                                  doctorName,
-                                  doctorHospital: hospital,
-                                  doctorDepartment: department,
-                                  diagnosis: doctorDiagnosis || "Acute Upper Respiratory Tract Infection",
-                                  clinicalNotes:
-                                    doctorNotes ||
-                                    "Patient examined in OPD Room 3. Prescribed symptomatic medications. Review if symptoms persist.",
-                                  prescriptions,
-                                });
-
-                                setConsultationSuccessMsg(
-                                  `Consultation confirmed! e-Prescription synced to ${selectedPatient.name}'s ABDM record and health timeline.`
-                                );
-                                setStoreConsultations(demoStore.getConsultations());
-                                setSelectedPatient((prev) =>
-                                  prev ? { ...prev, status: "Recent", diagnosis: doctorDiagnosis } : null
-                                );
-                              }
-                            }}
-                            className="px-6 py-3 bg-[#003d29] hover:bg-[#347355] text-[#f0fff4] rounded-xl text-xs sm:text-sm font-bold shadow-lg shadow-[#003d29]/20 transition-all cursor-pointer flex items-center justify-center gap-2"
-                          >
-                            <ShieldCheck className="w-4 h-4 text-[#c9fdd7]" />
-                            <span>Confirm & Complete Consultation</span>
-                          </button>
-                        </div>
+                              setConsultationSuccessMsg(
+                                `Consultation confirmed! e-Prescription synced to ${selectedPatient.name}'s ABDM record and health timeline.`
+                              );
+                              setStoreConsultations(demoStore.getConsultations());
+                              setSelectedPatient((prev) =>
+                                prev ? { ...prev, status: "Recent", diagnosis: doctorDiagnosis } : null
+                              );
+                            }
+                          }}
+                          className="w-full sm:w-auto px-6 py-3 bg-[#003d29] hover:bg-[#347355] text-[#f0fff4] rounded-xl text-xs sm:text-sm font-bold shadow-lg shadow-[#003d29]/20 transition-all cursor-pointer flex items-center justify-center gap-2"
+                        >
+                          <ShieldCheck className="w-4 h-4 text-[#c9fdd7]" />
+                          <span>Confirm & Complete Consultation</span>
+                        </button>
                       </div>
                     </div>
                   </div>
@@ -2212,174 +2159,6 @@ export const DoctorDashboard: React.FC<DoctorDashboardProps> = ({
                 className="px-4 py-2 bg-[#003d29] hover:bg-[#347355] text-[#f0fff4] rounded-xl text-xs font-bold transition-all cursor-pointer shadow-xs"
               >
                 Close Record
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* 🏥 ABDM Healthcare Professionals Registry (HPR) Referral Modal */}
-      {isReferralModalOpen && (
-        <div className="fixed inset-0 z-50 bg-[#003d29]/60 backdrop-blur-xs flex items-center justify-center p-4 animate-fade-in">
-          <div className="bg-white border border-[#003d29]/20 rounded-2xl shadow-2xl max-w-lg w-full p-6 space-y-4 animate-scale-up">
-            {/* Modal Header */}
-            <div className="flex items-start justify-between pb-3 border-b border-[#003d29]/15">
-              <div>
-                <span className="px-2.5 py-0.5 rounded-full bg-[#c9fdd7] text-[#003d29] text-[10px] font-bold border border-[#003d29]/15">
-                  ABDM HPR Referral Network
-                </span>
-                <h3 className="text-base sm:text-lg font-bold text-[#003d29] mt-1">
-                  Refer Patient to HPR Specialist
-                </h3>
-                <p className="text-xs text-[#587366] mt-0.5">
-                  Transfer {selectedPatient?.name}&apos;s case file directly to another verified doctor on ABDM HPR.
-                </p>
-              </div>
-              <button
-                type="button"
-                onClick={() => setIsReferralModalOpen(false)}
-                className="p-1 text-[#587366] hover:text-[#003d29] rounded-lg hover:bg-[#f0fff4]"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            {/* Doctor Search & Selector */}
-            <div className="space-y-3">
-              <label className="block text-xs font-bold text-[#003d29]">
-                Select HPR Doctor / Specialist:
-              </label>
-
-              {/* Doctor Search Input */}
-              <div className="relative">
-                <Search className="w-4 h-4 text-[#347355] absolute left-3 top-2.5" />
-                <input
-                  type="text"
-                  placeholder="Search by doctor name, specialty, or HPR ID..."
-                  value={referralSearchQuery}
-                  onChange={(e) => setReferralSearchQuery(e.target.value)}
-                  className="w-full pl-9 pr-3 py-2 text-xs bg-[#f0fff4] border border-[#003d29]/20 rounded-xl text-[#003d29] focus:outline-none focus:ring-2 focus:ring-[#347355]"
-                />
-              </div>
-
-              {/* Doctor Selection List */}
-              <div className="max-h-48 overflow-y-auto space-y-2 pr-1 scrollbar-none">
-                {KNOWN_DOCTORS.filter(
-                  (doc) =>
-                    doc.id !== selectedPatient?.consultationRef?.doctorId &&
-                    (doc.name.toLowerCase().includes(referralSearchQuery.toLowerCase()) ||
-                      doc.specialty.toLowerCase().includes(referralSearchQuery.toLowerCase()) ||
-                      (doc.hprId && doc.hprId.toLowerCase().includes(referralSearchQuery.toLowerCase())))
-                ).map((doc) => {
-                  const isSelected = selectedReferralDoctor?.id === doc.id;
-                  return (
-                    <div
-                      key={doc.id}
-                      onClick={() => setSelectedReferralDoctor(doc)}
-                      className={`p-3 rounded-xl border transition-all cursor-pointer flex items-center justify-between gap-3 ${
-                        isSelected
-                          ? "bg-[#f0fff4] border-[#003d29] ring-2 ring-[#003d29]/20 shadow-xs"
-                          : "bg-white border-[#003d29]/15 hover:bg-[#f0fff4]/50"
-                      }`}
-                    >
-                      <div className="flex items-center gap-3">
-                        <div
-                          style={{ backgroundColor: doc.avatarColor || "#003d29" }}
-                          className="w-10 h-10 rounded-xl text-white font-bold text-sm flex items-center justify-center shrink-0 shadow-xs"
-                        >
-                          {doc.name.split(" ").slice(-1)[0][0]}
-                        </div>
-                        <div className="min-w-0">
-                          <strong className="block text-xs font-bold text-[#003d29] truncate">
-                            {doc.name}
-                          </strong>
-                          <span className="block text-[11px] text-[#347355] font-semibold truncate">
-                            {doc.specialty}
-                          </span>
-                          <span className="block text-[10px] text-[#587366] font-mono truncate">
-                            HPR ID: {doc.hprId || `${doc.id.toLowerCase()}@hpr.abdm`}
-                          </span>
-                        </div>
-                      </div>
-
-                      <div className="text-right shrink-0">
-                        <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-white text-[#003d29] border border-[#003d29]/10">
-                          {doc.roomNumber}
-                        </span>
-                        <span className="block text-[9px] text-[#587366] mt-0.5">
-                          {doc.hospital}
-                        </span>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-
-            {/* Clinical Referral Reason */}
-            <div className="space-y-1.5">
-              <label className="block text-xs font-bold text-[#003d29]">
-                Clinical Referral Reason & Notes:
-              </label>
-              <textarea
-                rows={3}
-                value={referralReason}
-                onChange={(e) => setReferralReason(e.target.value)}
-                placeholder="Specify clinical rationale (e.g. Referring for cardiology evaluation due to acute onset chest discomfort and elevated blood pressure)..."
-                className="w-full p-3 text-xs bg-[#f0fff4] border border-[#003d29]/20 rounded-xl text-[#003d29] focus:outline-none focus:ring-2 focus:ring-[#347355]"
-              />
-            </div>
-
-            {/* Modal Actions */}
-            <div className="pt-3 border-t border-[#003d29]/15 flex items-center justify-end gap-2.5">
-              <button
-                type="button"
-                onClick={() => setIsReferralModalOpen(false)}
-                className="px-4 py-2 bg-[#f0fff4] hover:bg-[#c9fdd7] text-[#003d29] border border-[#003d29]/20 rounded-xl text-xs font-bold transition-all cursor-pointer"
-              >
-                Cancel
-              </button>
-
-              <button
-                type="button"
-                disabled={!selectedReferralDoctor || !referralReason.trim()}
-                onClick={() => {
-                  if (!selectedPatient?.consultationRef || !selectedReferralDoctor) return;
-
-                  const fromDoc: DoctorProfile = {
-                    id: "DOC-ANANYA-AK",
-                    name: doctorName || "Dr. Ananya Kulkarni",
-                    specialty: department || "General Physician & Internal Medicine",
-                    hospital: hospital || "DemoCare Hospital",
-                    department: department || "General Medicine",
-                    roomNumber: "Room 3",
-                    qrCodeToken: "OPD-DEMOCARE-3",
-                    experience: "12 Years",
-                    qualifications: "MBBS, MD",
-                    hprId: "dr.ananya.kulkarni@hpr.abdm",
-                  };
-
-                  const updated = demoStore.referConsultation(
-                    selectedPatient.consultationRef.id,
-                    fromDoc,
-                    selectedReferralDoctor,
-                    referralReason
-                  );
-
-                  if (updated) {
-                    setConsultationSuccessMsg(
-                      `✓ Case successfully referred to ${selectedReferralDoctor.name} (${selectedReferralDoctor.specialty}) via ABDM HPR Network! File transferred.`
-                    );
-                    setStoreConsultations(demoStore.getConsultations());
-                    setIsReferralModalOpen(false);
-                    setReferralReason("");
-                    setSelectedPatient(null);
-                  }
-                }}
-                className="px-5 py-2.5 bg-[#003d29] hover:bg-[#347355] text-white rounded-xl text-xs font-bold transition-all cursor-pointer shadow-sm flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                <Send className="w-3.5 h-3.5 text-[#c9fdd7]" />
-                <span>Transfer Case via ABDM HPR</span>
               </button>
             </div>
           </div>
