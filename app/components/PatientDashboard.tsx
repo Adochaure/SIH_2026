@@ -999,6 +999,7 @@ export const PatientDashboard: React.FC<PatientDashboardProps> = ({
               {/* Interactive Visual Map Canvas Grid & Side Drawer */}
               <div className="grid grid-cols-1 lg:grid-cols-3 gap-5 items-stretch">
                 {/* Visual Map Box (2 columns on LG) */}
+                <div className="lg:col-span-2 relative min-h-[340px] sm:min-h-[400px] rounded-2xl bg-[#e5f5ea] border border-[#003d29]/20 overflow-hidden shadow-inner flex flex-col justify-between p-4 select-none">
                 <div className="lg:col-span-2 relative min-h-[360px] sm:min-h-[420px] rounded-2xl bg-[#e5f5ea] border border-[#003d29]/20 overflow-hidden shadow-inner flex flex-col justify-between p-4 select-none">
                   {/* Map Graphic Overlay Background (Stylized roads & radius rings) */}
                   <div className="absolute inset-0 pointer-events-none opacity-40">
@@ -1103,6 +1104,7 @@ export const PatientDashboard: React.FC<PatientDashboardProps> = ({
                   </div>
 
                   {/* Center Patient Location Pin */}
+                  <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-10 flex flex-col items-center">
                   <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-20 flex flex-col items-center">
                     <div className="relative flex items-center justify-center">
                       <span className="absolute w-10 h-10 rounded-full bg-[#347355]/30 animate-ping" />
@@ -1148,6 +1150,14 @@ export const PatientDashboard: React.FC<PatientDashboardProps> = ({
                             <span className="absolute -inset-2 rounded-full bg-[#347355]/40 animate-pulse ring-2 ring-[#003d29]" />
                           )}
 
+                          <div
+                            style={{ backgroundColor: doc.avatarColor || '#003d29' }}
+                            className={`w-11 h-11 rounded-full border-2 ${
+                              isSelected ? 'border-amber-400 ring-4 ring-[#003d29]/30' : 'border-white'
+                            } text-white font-bold flex items-center justify-center text-xs shadow-md transition-all group-hover:shadow-xl`}
+                          >
+                            {doc.name.split(" ").slice(-1)[0][0]}
+                          </div>
                           {/* Avatar Circle Container */}
                           <div className="relative flex items-center justify-center">
                             <div
@@ -1159,24 +1169,37 @@ export const PatientDashboard: React.FC<PatientDashboardProps> = ({
                               {doc.name.split(" ").slice(-1)[0][0]}
                             </div>
 
+                          {/* Live Queue Badge Overlay */}
+                          <span className="absolute -bottom-1 -right-1 px-1.5 py-0.5 rounded-full bg-amber-400 text-[#003d29] text-[9px] font-extrabold border border-white shadow-xs">
+                            {doc.currentPatientCount || 2} Wait
+                          </span>
                             {/* Rating Badge (Top Left - NO OVERLAP WITH BOTTOM DISTANCE PILL) */}
                             <span className="absolute -top-2 -left-2 px-1.5 py-0.5 rounded-full bg-white text-[#003d29] text-[9px] font-bold border border-[#003d29]/20 shadow-sm flex items-center gap-0.5 z-10">
                               <Star className="w-2.5 h-2.5 fill-amber-400 text-amber-500" />
                               {doc.rating || 4.9}
                             </span>
 
+                          {/* Rating Badge Top Left */}
+                          <span className="absolute -top-1 -left-1 px-1 py-0.5 rounded-md bg-white text-[#003d29] text-[9px] font-bold border border-[#003d29]/15 shadow-xs flex items-center gap-0.5">
+                            <Star className="w-2.5 h-2.5 fill-amber-400 text-amber-500" />
+                            {doc.rating || 4.9}
+                          </span>
                             {/* Live Queue Badge (Top Right - NO OVERLAP WITH BOTTOM DISTANCE PILL) */}
                             <span className="absolute -top-2 -right-2 px-1.5 py-0.5 rounded-full bg-amber-400 text-[#003d29] text-[9px] font-extrabold border border-white shadow-sm z-10 whitespace-nowrap">
                               {doc.currentPatientCount || 2} Wait
                             </span>
                           </div>
 
+                          {/* Label Pill */}
+                          <div className={`mt-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold shadow-md whitespace-nowrap transition-colors ${
+                            isSelected ? "bg-[#003d29] text-white" : "bg-white text-[#003d29] border border-[#003d29]/20"
                           {/* Clear Unobstructed Bottom Label Pill (Doctor Name + Distance) */}
                           <div className={`mt-1.5 px-2.5 py-1 rounded-full text-[10px] font-bold shadow-md whitespace-nowrap transition-all flex items-center gap-1.5 border z-10 ${
                             isSelected
                               ? "bg-[#003d29] text-white border-amber-400 ring-2 ring-[#003d29]/20"
                               : "bg-white text-[#003d29] border-[#003d29]/20 group-hover:bg-[#f0fff4]"
                           }`}>
+                            {doc.name.split(" ")[1]} · {doc.distanceKm}
                             <span className="truncate max-w-[85px]">{doc.name.split(" ")[1]}</span>
                             <span className="w-1 h-1 rounded-full bg-amber-400" />
                             <span className="text-[#347355] font-extrabold text-[10px]">{doc.distanceKm}</span>
@@ -1189,6 +1212,7 @@ export const PatientDashboard: React.FC<PatientDashboardProps> = ({
                   {/* Map Controls Bottom Right */}
                   <div className="relative z-10 self-end flex items-center gap-1.5 pointer-events-none">
                     <span className="px-2.5 py-1 rounded-lg bg-white/90 text-[#003d29] text-[10px] font-bold border border-[#003d29]/15 shadow-xs">
+                      Click doctor pin to inspect profile
                       Click doctor pin to view navigation route
                     </span>
                   </div>
