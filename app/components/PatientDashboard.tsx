@@ -1102,7 +1102,7 @@ export const PatientDashboard: React.FC<PatientDashboardProps> = ({
                     </div>
                   </div>
 
-                  {/* 📍 Patient Pin (Center) */}
+                  {/* Patient Pin (Center) */}
                   <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-20 flex flex-col items-center">
                     <div className="relative flex items-center justify-center">
                       <span className="absolute w-10 h-10 rounded-full bg-[#347355]/30 animate-ping" />
