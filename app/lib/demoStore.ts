@@ -66,6 +66,18 @@ export interface ConsultationRecord {
     severity?: string;
     actionRecommended?: string;
   };
+  isReferred?: boolean;
+  referralDetails?: {
+    referredFromDoctorId: string;
+    referredFromDoctorName: string;
+    referredFromSpecialty: string;
+    referredToDoctorId: string;
+    referredToDoctorName: string;
+    referredToSpecialty: string;
+    referredToHprId: string;
+    reason: string;
+    referredAt: string;
+  };
 }
 
 export interface DoctorNotification {
@@ -125,6 +137,7 @@ export interface DoctorProfile {
   currentPatientCount?: number;
   category?: "general" | "cardiology" | "ayush" | "pediatrics" | "orthopedics" | "dermatology";
   avatarColor?: string;
+  hprId?: string;
 }
 
 const STORAGE_KEY_PATIENT = "carelink_demo_patient_v2";
@@ -165,6 +178,7 @@ export const DEFAULT_DOCTOR: DoctorProfile = {
   currentPatientCount: 3,
   category: "general",
   avatarColor: "#003d29",
+  hprId: "dr.ananya.kulkarni@hpr.abdm",
 };
 
 export const KNOWN_DOCTORS: DoctorProfile[] = [
@@ -187,6 +201,7 @@ export const KNOWN_DOCTORS: DoctorProfile[] = [
     currentPatientCount: 5,
     category: "general",
     avatarColor: "#1e3a8a",
+    hprId: "dr.rajesh.rao@hpr.abdm",
   },
   {
     id: "DOC-MEERA-MN",
@@ -206,6 +221,7 @@ export const KNOWN_DOCTORS: DoctorProfile[] = [
     currentPatientCount: 1,
     category: "ayush",
     avatarColor: "#047857",
+    hprId: "dr.meera.nambiar@hpr.abdm",
   },
   {
     id: "DOC-VIKRAM-VS",
@@ -225,6 +241,7 @@ export const KNOWN_DOCTORS: DoctorProfile[] = [
     currentPatientCount: 2,
     category: "cardiology",
     avatarColor: "#b91c1c",
+    hprId: "dr.vikram.sharma@hpr.abdm",
   },
   {
     id: "DOC-SUNITA-SP",
@@ -244,6 +261,7 @@ export const KNOWN_DOCTORS: DoctorProfile[] = [
     currentPatientCount: 4,
     category: "pediatrics",
     avatarColor: "#7c3aed",
+    hprId: "dr.sunita.patil@hpr.abdm",
   },
   {
     id: "DOC-AMIT-AJ",
@@ -263,6 +281,7 @@ export const KNOWN_DOCTORS: DoctorProfile[] = [
     currentPatientCount: 2,
     category: "orthopedics",
     avatarColor: "#d97706",
+    hprId: "dr.amit.joshi@hpr.abdm",
   },
 ];
 
@@ -478,6 +497,78 @@ class DemoStore {
       time: "Just now",
       read: false,
       consultationId: updated.id,
+    });
+
+    return updated;
+  }
+
+  referConsultation(
+    consultationId: string,
+    fromDoctor: DoctorProfile,
+    toDoctor: DoctorProfile,
+    reason: string
+  ): ConsultationRecord | null {
+    const consultations = this.getConsultations();
+    const index = consultations.findIndex((c) => c.id === consultationId);
+    if (index === -1) return null;
+
+    const consultation = consultations[index];
+    const nowTime = new Date().toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" });
+
+    const updated: ConsultationRecord = {
+      ...consultation,
+      doctorId: toDoctor.id,
+      doctorQrCode: toDoctor.qrCodeToken,
+      doctorName: toDoctor.name,
+      doctorHospital: toDoctor.hospital,
+      doctorDepartment: toDoctor.department,
+      doctorRoom: toDoctor.roomNumber,
+      checkInStatus: "checked_in",
+      status: "Waiting",
+      isReferred: true,
+      referralDetails: {
+        referredFromDoctorId: fromDoctor.id,
+        referredFromDoctorName: fromDoctor.name,
+        referredFromSpecialty: fromDoctor.specialty,
+        referredToDoctorId: toDoctor.id,
+        referredToDoctorName: toDoctor.name,
+        referredToSpecialty: toDoctor.specialty,
+        referredToHprId: toDoctor.hprId || `${toDoctor.id.toLowerCase()}@hpr.abdm`,
+        reason,
+        referredAt: nowTime,
+      },
+    };
+
+    consultations[index] = updated;
+    this.saveConsultations(consultations);
+
+    // Notify receiving doctor in workstation
+    this.addDoctorNotification({
+      id: `notif-${Date.now()}`,
+      doctorId: toDoctor.id,
+      title: `↩️ HPR Referral Transfer (Token ${updated.tokenNumber})`,
+      message: `${fromDoctor.name} (${fromDoctor.specialty}) referred patient ${updated.patientName}. Reason: "${reason}"`,
+      time: "Just now",
+      read: false,
+      consultationId: updated.id,
+    });
+
+    // Save referral entry into patient ABHA timeline
+    const patient = this.getPatient();
+    const newTimelineRecord: TimelineRecord = {
+      id: `time-ref-${Date.now()}`,
+      date: new Date().toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" }),
+      type: "consultation",
+      title: `↩️ Case Referred to ${toDoctor.name} (${toDoctor.specialty})`,
+      doctor: `${fromDoctor.name} → ${toDoctor.name}`,
+      facility: toDoctor.hospital,
+      notes: `Referred via ABDM HPR Network. Clinical Reason: "${reason}". Target HPR ID: ${toDoctor.hprId || "hpr.abdm"}`,
+      tag: "HPR Referral",
+    };
+
+    this.savePatient({
+      ...patient,
+      timeline: [newTimelineRecord, ...patient.timeline],
     });
 
     return updated;
