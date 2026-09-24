@@ -32,6 +32,7 @@ import {
   Sparkles,
   Edit2,
   AlertTriangle,
+  Lock,
 } from "lucide-react";
 import { Navbar } from "./Navbar";
 import { demoStore, PrescriptionItem, AttachedDocument, ConsultationRecord } from "../lib/demoStore";
@@ -1094,57 +1095,70 @@ export const DoctorDashboard: React.FC<DoctorDashboardProps> = ({
             )}
 
             {/* -------------------- VIEW 3: PATIENT CLINICAL FILE (Cases, History Timeline & Family Tree) -------------------- */}
-            {selectedPatient && (
-              <div className="space-y-6 animate-fade-in">
-                {/* Back to Patients Button */}
-                <button
-                  type="button"
-                  onClick={() => setSelectedPatient(null)}
-                  className="inline-flex items-center gap-2 text-xs font-bold text-[#347355] hover:text-[#003d29] cursor-pointer group transition-colors"
-                >
-                  <ArrowLeft className="w-4 h-4 group-hover:-translate-x-1 transition-transform" />
-                  <span>Back to patient directory</span>
-                </button>
+            {selectedPatient && (() => {
+              const isConsultationCompleted =
+                selectedPatient.consultationRef?.status === "Completed" ||
+                selectedPatient.consultationRef?.checkInStatus === "completed" ||
+                selectedPatient.status === "Recent";
 
-                {/* Patient Header Card */}
-                <div className="p-5 sm:p-6 bg-white border border-[#003d29]/15 rounded-2xl shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-5">
-                  <div className="flex items-center gap-4">
-                    <div className="grid place-items-center w-14 h-14 sm:w-16 sm:h-16 rounded-full bg-[#c9fdd7] text-[#003d29] font-bold text-lg border-2 border-[#347355]/20 shadow-xs flex-shrink-0">
-                      {selectedPatient.initials}
-                    </div>
-                    <div>
-                      <div className="flex items-center gap-2">
-                        <h1 className="text-xl sm:text-2xl font-bold text-[#003d29]">
-                          {selectedPatient.name}
-                        </h1>
-                        <span className="px-2 py-0.5 rounded-md bg-[#c9fdd7] text-[#003d29] text-[10px] font-bold border border-[#347355]/20">
-                          ABHA Verified
-                        </span>
+              return (
+                <div className="space-y-6 animate-fade-in">
+                  {/* Back to Patients Button */}
+                  <button
+                    type="button"
+                    onClick={() => setSelectedPatient(null)}
+                    className="inline-flex items-center gap-2 text-xs font-bold text-[#347355] hover:text-[#003d29] cursor-pointer group transition-colors"
+                  >
+                    <ArrowLeft className="w-4 h-4 group-hover:-translate-x-1 transition-transform" />
+                    <span>Back to patient directory</span>
+                  </button>
+
+                  {/* Patient Header Card */}
+                  <div className="p-5 sm:p-6 bg-white border border-[#003d29]/15 rounded-2xl shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-5">
+                    <div className="flex items-center gap-4">
+                      <div className="grid place-items-center w-14 h-14 sm:w-16 sm:h-16 rounded-full bg-[#c9fdd7] text-[#003d29] font-bold text-lg border-2 border-[#347355]/20 shadow-xs flex-shrink-0">
+                        {selectedPatient.initials}
                       </div>
-                      <p className="text-xs text-[#587366] mt-0.5">
-                        {selectedPatient.age} years · {selectedPatient.gender} · {selectedPatient.contact}
-                      </p>
-                      <p className="text-[11px] text-[#347355] font-mono mt-0.5">
-                        ABHA ID: {selectedPatient.abhaId}
-                      </p>
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <h1 className="text-xl sm:text-2xl font-bold text-[#003d29]">
+                            {selectedPatient.name}
+                          </h1>
+                          <span className="px-2 py-0.5 rounded-md bg-[#c9fdd7] text-[#003d29] text-[10px] font-bold border border-[#347355]/20">
+                            ABHA Verified
+                          </span>
+                        </div>
+                        <p className="text-xs text-[#587366] mt-0.5">
+                          {selectedPatient.age} years · {selectedPatient.gender} · {selectedPatient.contact}
+                        </p>
+                        <p className="text-[11px] text-[#347355] font-mono mt-0.5">
+                          ABHA ID: {selectedPatient.abhaId}
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="flex flex-wrap items-center gap-2 border-t md:border-t-0 pt-3 md:pt-0 border-[#003d29]/10">
+                      {selectedPatient.consultationRef?.isEmergency && (
+                        <span className="px-3 py-1 bg-red-100 text-red-700 border border-red-300 rounded-lg text-xs font-bold animate-pulse flex items-center gap-1.5 shadow-xs">
+                          <AlertTriangle className="w-3.5 h-3.5 text-red-600 shrink-0" />
+                          <span>EMERGENCY FAST-TRACK</span>
+                        </span>
+                      )}
+                      <span className="px-3 py-1 bg-[#f0fff4] text-[#003d29] border border-[#003d29]/15 rounded-lg text-xs font-bold">
+                        Case #{selectedPatient.caseId}
+                      </span>
+                      {isConsultationCompleted ? (
+                        <span className="px-3 py-1 bg-amber-100 text-amber-900 border border-amber-300 rounded-lg text-xs font-bold flex items-center gap-1.5 shadow-xs">
+                          <Lock className="w-3.5 h-3.5 text-amber-700 shrink-0" />
+                          <span>ABDM Consent Expired (Locked)</span>
+                        </span>
+                      ) : (
+                        <span className="px-3 py-1 bg-[#c9fdd7] text-[#003d29] rounded-lg text-xs font-bold">
+                          Status: {selectedPatient.status}
+                        </span>
+                      )}
                     </div>
                   </div>
-
-                  <div className="flex flex-wrap items-center gap-2 border-t md:border-t-0 pt-3 md:pt-0 border-[#003d29]/10">
-                    {selectedPatient.consultationRef?.isEmergency && (
-                      <span className="px-3 py-1 bg-red-100 text-red-700 border border-red-300 rounded-lg text-xs font-bold animate-pulse flex items-center gap-1.5 shadow-xs">
-                        <AlertTriangle className="w-3.5 h-3.5 text-red-600 shrink-0" />
-                        <span>EMERGENCY FAST-TRACK</span>
-                      </span>
-                    )}
-                    <span className="px-3 py-1 bg-[#f0fff4] text-[#003d29] border border-[#003d29]/15 rounded-lg text-xs font-bold">
-                      Case #{selectedPatient.caseId}
-                    </span>
-                    <span className="px-3 py-1 bg-[#c9fdd7] text-[#003d29] rounded-lg text-xs font-bold">
-                      Status: {selectedPatient.status}
-                    </span>
-                  </div>
-                </div>
 
                 {/* Core Navigation Tabs inside Patient File: Case Details, Health Timeline, Family Tree */}
                 <div className="flex items-center gap-2 p-1.5 bg-[#e8efea] rounded-xl border border-[#003d29]/10">
@@ -1688,183 +1702,224 @@ export const DoctorDashboard: React.FC<DoctorDashboardProps> = ({
 
                 {/* 2. Sub-Tab: Patient Health Timeline */}
                 {patientDetailTab === "timeline" && (
-                  <div className="p-5 sm:p-6 bg-white border border-[#003d29]/15 rounded-2xl shadow-xs animate-fade-in space-y-4">
-                    <div className="pb-3 border-b border-[#003d29]/10">
-                      <h3 className="text-sm font-bold text-[#003d29]">
-                        Chronological Health Journey
-                      </h3>
-                      <p className="text-xs text-[#587366] mt-0.5">
-                        Encounters, diagnostics, and prescriptions synced from patient&apos;s ABHA locker.
-                      </p>
+                  isConsultationCompleted ? (
+                    <div className="p-8 bg-white border border-[#003d29]/15 rounded-2xl shadow-xs text-center space-y-4 animate-fade-in">
+                      <div className="grid place-items-center w-14 h-14 rounded-2xl bg-amber-100 text-amber-800 mx-auto">
+                        <Lock className="w-7 h-7 stroke-[2.2]" />
+                      </div>
+                      <div className="max-w-md mx-auto space-y-1.5">
+                        <h3 className="text-base font-bold text-[#003d29]">
+                          🔒 ABDM Data Privacy Lock: Encounter Access Expired
+                        </h3>
+                        <p className="text-xs text-[#587366] leading-relaxed">
+                          In compliance with ABDM Health Data Privacy Protocols, physician access to historical patient health timelines, lab document attachments, and past records automatically revokes once a consultation encounter is marked completed.
+                        </p>
+                      </div>
+                      <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-xl bg-[#f0fff4] border border-[#003d29]/15 text-xs text-[#003d29] font-bold">
+                        <ShieldCheck className="w-4 h-4 text-[#347355]" />
+                        <span>✓ ABDM Privacy Protocol Active · Access Restricted Post-Encounter</span>
+                      </div>
                     </div>
+                  ) : (
+                    <div className="p-5 sm:p-6 bg-white border border-[#003d29]/15 rounded-2xl shadow-xs animate-fade-in space-y-4">
+                      <div className="pb-3 border-b border-[#003d29]/10">
+                        <h3 className="text-sm font-bold text-[#003d29]">
+                          Chronological Health Journey
+                        </h3>
+                        <p className="text-xs text-[#587366] mt-0.5">
+                          Encounters, diagnostics, and prescriptions synced from patient&apos;s ABHA locker.
+                        </p>
+                      </div>
 
-                    <div className="relative pl-6 sm:pl-8 space-y-5 before:absolute before:left-2 sm:before:left-3 before:top-2 before:bottom-2 before:w-0.5 before:bg-[#003d29]/15">
-                      {selectedPatient.timeline.map((item) => (
-                        <div key={item.id} className="relative">
-                          <div className="absolute -left-6 sm:-left-8 top-1.5 w-3.5 h-3.5 rounded-full bg-[#347355] border-2 border-white ring-2 ring-[#c9fdd7]" />
-                          <div className="p-4 rounded-xl bg-[#f0fff4] border border-[#003d29]/10 text-xs">
-                            <div className="flex flex-wrap items-center justify-between gap-2 mb-1">
-                              <span className="font-bold text-[#347355] flex items-center gap-1.5">
-                                <Calendar className="w-3.5 h-3.5" />
-                                <span>{item.date}</span>
-                              </span>
-                              <span className="text-[10px] font-bold px-2 py-0.5 bg-[#c9fdd7] text-[#003d29] rounded">
-                                {item.tag}
-                              </span>
-                            </div>
-                            <strong className="block text-sm font-bold text-[#003d29] mt-1">
-                              {item.title}
-                            </strong>
-                            <p className="text-[11px] text-[#587366] mt-0.5">
-                              {item.doctor} · {item.facility}
-                            </p>
-                            <p className="mt-2 text-xs text-[#092c20] leading-relaxed bg-white p-2.5 rounded-lg border border-[#003d29]/10">
-                              {item.notes}
-                            </p>
-
-                            {/* Attached Records & OCR Transcripts */}
-                            {item.attachments && item.attachments.length > 0 && (
-                              <div className="mt-3 pt-3 border-t border-[#003d29]/10">
-                                <span className="text-[10px] uppercase font-bold text-[#347355] block mb-2 flex items-center gap-1.5">
-                                  <FileCheck className="w-3.5 h-3.5" />
-                                  <span>Attached Records & OCR Transcripts ({item.attachments.length})</span>
+                      <div className="relative pl-6 sm:pl-8 space-y-5 before:absolute before:left-2 sm:before:left-3 before:top-2 before:bottom-2 before:w-0.5 before:bg-[#003d29]/15">
+                        {selectedPatient.timeline.map((item) => (
+                          <div key={item.id} className="relative">
+                            <div className="absolute -left-6 sm:-left-8 top-1.5 w-3.5 h-3.5 rounded-full bg-[#347355] border-2 border-white ring-2 ring-[#c9fdd7]" />
+                            <div className="p-4 rounded-xl bg-[#f0fff4] border border-[#003d29]/10 text-xs">
+                              <div className="flex flex-wrap items-center justify-between gap-2 mb-1">
+                                <span className="font-bold text-[#347355] flex items-center gap-1.5">
+                                  <Calendar className="w-3.5 h-3.5" />
+                                  <span>{item.date}</span>
                                 </span>
-                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                                  {item.attachments.map((doc) => (
-                                    <div
-                                      key={doc.id}
-                                      className="p-3 bg-white rounded-xl border border-[#003d29]/10 flex flex-col justify-between gap-2 shadow-2xs"
-                                    >
-                                      <div className="flex items-start gap-2.5 min-w-0">
-                                        <div className="p-1.5 rounded-lg bg-[#c9fdd7]/70 text-[#003d29] shrink-0 mt-0.5">
-                                          <FileText className="w-4 h-4" />
-                                        </div>
-                                        <div className="min-w-0 flex-1">
-                                          <strong className="block text-xs font-bold text-[#003d29] truncate">
-                                            {doc.name}
-                                          </strong>
-                                          <span className="text-[10px] text-[#587366] block capitalize">
-                                            {doc.type.replace("_", " ")} · {doc.date} {doc.fileSize ? `· ${doc.fileSize}` : ""}
-                                          </span>
-                                          {doc.ocrText && (
-                                            <span className="inline-block mt-1 text-[9px] font-bold px-1.5 py-0.5 bg-[#c9fdd7] text-[#003d29] rounded">
-                                              ✓ OCR Verified
-                                            </span>
-                                          )}
-                                        </div>
-                                      </div>
-                                      <button
-                                        type="button"
-                                        onClick={() => setActiveDocPreview(doc)}
-                                        className="w-full py-1.5 px-2 bg-[#f0fff4] hover:bg-[#c9fdd7] text-[#003d29] border border-[#003d29]/15 rounded-lg text-[11px] font-bold transition-all cursor-pointer text-center"
+                                <span className="text-[10px] font-bold px-2 py-0.5 bg-[#c9fdd7] text-[#003d29] rounded">
+                                  {item.tag}
+                                </span>
+                              </div>
+                              <strong className="block text-sm font-bold text-[#003d29] mt-1">
+                                {item.title}
+                              </strong>
+                              <p className="text-[11px] text-[#587366] mt-0.5">
+                                {item.doctor} · {item.facility}
+                              </p>
+                              <p className="mt-2 text-xs text-[#092c20] leading-relaxed bg-white p-2.5 rounded-lg border border-[#003d29]/10">
+                                {item.notes}
+                              </p>
+
+                              {/* Attached Records & OCR Transcripts */}
+                              {item.attachments && item.attachments.length > 0 && (
+                                <div className="mt-3 pt-3 border-t border-[#003d29]/10">
+                                  <span className="text-[10px] uppercase font-bold text-[#347355] block mb-2 flex items-center gap-1.5">
+                                    <FileCheck className="w-3.5 h-3.5" />
+                                    <span>Attached Records & OCR Transcripts ({item.attachments.length})</span>
+                                  </span>
+                                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                                    {item.attachments.map((doc) => (
+                                      <div
+                                        key={doc.id}
+                                        className="p-3 bg-white rounded-xl border border-[#003d29]/10 flex flex-col justify-between gap-2 shadow-2xs"
                                       >
-                                        Inspect Document & OCR Text
-                                      </button>
-                                    </div>
-                                  ))}
+                                        <div className="flex items-start gap-2.5 min-w-0">
+                                          <div className="p-1.5 rounded-lg bg-[#c9fdd7]/70 text-[#003d29] shrink-0 mt-0.5">
+                                            <FileText className="w-4 h-4" />
+                                          </div>
+                                          <div className="min-w-0 flex-1">
+                                            <strong className="block text-xs font-bold text-[#003d29] truncate">
+                                              {doc.name}
+                                            </strong>
+                                            <span className="text-[10px] text-[#587366] block capitalize">
+                                              {doc.type.replace("_", " ")} · {doc.date} {doc.fileSize ? `· ${doc.fileSize}` : ""}
+                                            </span>
+                                            {doc.ocrText && (
+                                              <span className="inline-block mt-1 text-[9px] font-bold px-1.5 py-0.5 bg-[#c9fdd7] text-[#003d29] rounded">
+                                                ✓ OCR Verified
+                                              </span>
+                                            )}
+                                          </div>
+                                        </div>
+                                        <button
+                                          type="button"
+                                          onClick={() => setActiveDocPreview(doc)}
+                                          className="w-full py-1.5 px-2 bg-[#f0fff4] hover:bg-[#c9fdd7] text-[#003d29] border border-[#003d29]/15 rounded-lg text-[11px] font-bold transition-all cursor-pointer text-center"
+                                        >
+                                          Inspect Document & OCR Text
+                                        </button>
+                                      </div>
+                                    ))}
+                                  </div>
                                 </div>
-                              </div>
-                            )}
+                              )}
 
-                            {/* Prescriptions under timeline entry if present */}
-                            {item.prescriptions && item.prescriptions.length > 0 && (
-                              <div className="mt-3 pt-3 border-t border-[#003d29]/10">
-                                <span className="text-[10px] uppercase font-bold text-[#347355] block mb-1.5 flex items-center gap-1.5">
-                                  <Pill className="w-3.5 h-3.5" />
-                                  <span>Prescribed Medications</span>
-                                </span>
-                                <div className="space-y-1">
-                                  {item.prescriptions.map((rx) => (
-                                    <div key={rx.id} className="p-2 bg-white rounded-lg border border-[#003d29]/10 text-[11px] flex justify-between items-center">
-                                      <span className="font-bold text-[#003d29]">{rx.name}</span>
-                                      <span className="text-[#587366] font-mono text-[10px]">{rx.dosage} · {rx.frequency} · {rx.duration}</span>
-                                    </div>
-                                  ))}
+                              {/* Prescriptions under timeline entry if present */}
+                              {item.prescriptions && item.prescriptions.length > 0 && (
+                                <div className="mt-3 pt-3 border-t border-[#003d29]/10">
+                                  <span className="text-[10px] uppercase font-bold text-[#347355] block mb-1.5 flex items-center gap-1.5">
+                                    <Pill className="w-3.5 h-3.5" />
+                                    <span>Prescribed Medications</span>
+                                  </span>
+                                  <div className="space-y-1">
+                                    {item.prescriptions.map((rx) => (
+                                      <div key={rx.id} className="p-2 bg-white rounded-lg border border-[#003d29]/10 text-[11px] flex justify-between items-center">
+                                        <span className="font-bold text-[#003d29]">{rx.name}</span>
+                                        <span className="text-[#587366] font-mono text-[10px]">{rx.dosage} · {rx.frequency} · {rx.duration}</span>
+                                      </div>
+                                    ))}
+                                  </div>
                                 </div>
-                              </div>
-                            )}
+                              )}
+                            </div>
                           </div>
-                        </div>
-                      ))}
+                        ))}
+                      </div>
                     </div>
-                  </div>
+                  )
                 )}
 
                 {/* 3. Sub-Tab: Family Medical Tree & Hereditary Profile */}
                 {patientDetailTab === "family-tree" && (
-                  <div className="p-5 sm:p-6 bg-white border border-[#003d29]/15 rounded-2xl shadow-xs animate-fade-in space-y-4">
-                    <div className="pb-3 border-b border-[#003d29]/10">
-                      <h3 className="text-sm font-bold text-[#003d29]">
-                        Family Medical Tree & Genetic Insights
-                      </h3>
-                      <p className="text-xs text-[#587366] mt-0.5">
-                        Shared family health data authorized under ABDM consent framework.
-                      </p>
-                    </div>
-
-                    {/* Hereditary Risk Insight Box */}
-                    {selectedPatient.hereditaryRisk && (
-                      <div className="p-4 bg-[#f0fff4] border border-[#347355]/30 rounded-xl flex items-start gap-3">
-                        <HeartPulse className="w-5 h-5 text-[#347355] flex-shrink-0 mt-0.5" />
-                        <div className="text-xs text-[#092c20]">
-                          <strong className="block text-[#003d29] font-bold">
-                            Clinical Hereditary Risk Advisory:
-                          </strong>
-                          <span>{selectedPatient.hereditaryRisk}</span>
-                        </div>
+                  isConsultationCompleted ? (
+                    <div className="p-8 sm:p-12 bg-white border border-[#003d29]/15 rounded-2xl shadow-xs text-center space-y-4 animate-fade-in">
+                      <div className="w-14 h-14 rounded-full bg-[#f0fff4] border border-[#003d29]/15 flex items-center justify-center mx-auto text-[#003d29]">
+                        <Lock className="w-7 h-7 text-[#003d29]" />
                       </div>
-                    )}
+                      <div className="max-w-md mx-auto space-y-1.5">
+                        <h3 className="text-base font-bold text-[#003d29]">
+                          🔒 ABDM Data Privacy Lock: Encounter Access Expired
+                        </h3>
+                        <p className="text-xs text-[#587366] leading-relaxed">
+                          In compliance with ABDM Health Data Privacy Protocols, physician access to historical patient health timelines, lab document attachments, and family medical records automatically revokes once a consultation encounter is marked completed.
+                        </p>
+                      </div>
+                      <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-xl bg-[#f0fff4] border border-[#003d29]/15 text-xs text-[#003d29] font-bold">
+                        <ShieldCheck className="w-4 h-4 text-[#347355]" />
+                        <span>✓ ABDM Privacy Protocol Active · Access Restricted Post-Encounter</span>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="p-5 sm:p-6 bg-white border border-[#003d29]/15 rounded-2xl shadow-xs animate-fade-in space-y-4">
+                      <div className="pb-3 border-b border-[#003d29]/10">
+                        <h3 className="text-sm font-bold text-[#003d29]">
+                          Family Medical Tree & Genetic Insights
+                        </h3>
+                        <p className="text-xs text-[#587366] mt-0.5">
+                          Shared family health data authorized under ABDM consent framework.
+                        </p>
+                      </div>
 
-                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3.5 pt-2">
-                      {selectedPatient.familyTree.map((member) => (
-                        <div
-                          key={member.id}
-                          className="p-4 rounded-xl bg-[#f0fff4] border border-[#003d29]/15 flex flex-col justify-between"
-                        >
-                          <div>
-                            <div className="flex items-center justify-between">
-                              <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-white text-[#347355] border border-[#003d29]/10">
-                                {member.relation}
-                              </span>
-                              <span className="text-[10px] font-semibold text-[#587366]">
-                                Blood: {member.bloodGroup}
-                              </span>
-                            </div>
-                            <strong className="block text-sm font-bold text-[#003d29] mt-2">
-                              {member.name}
+                      {/* Hereditary Risk Insight Box */}
+                      {selectedPatient.hereditaryRisk && (
+                        <div className="p-4 bg-[#f0fff4] border border-[#347355]/30 rounded-xl flex items-start gap-3">
+                          <HeartPulse className="w-5 h-5 text-[#347355] flex-shrink-0 mt-0.5" />
+                          <div className="text-xs text-[#092c20]">
+                            <strong className="block text-[#003d29] font-bold">
+                              Clinical Hereditary Risk Advisory:
                             </strong>
-                            <span className="block text-xs text-[#587366] mt-0.5">
-                              {member.age} years · Linked ABHA
-                            </span>
-
-                            <div className="mt-2.5 flex flex-wrap gap-1">
-                              {member.conditions.map((cond, idx) => (
-                                <span
-                                  key={idx}
-                                  className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-white text-[#003d29] border border-[#003d29]/10"
-                                >
-                                  {cond}
-                                </span>
-                              ))}
-                            </div>
+                            <span>{selectedPatient.hereditaryRisk}</span>
                           </div>
-                          <div className="mt-3 pt-2 border-t border-[#003d29]/10 text-[10px] text-[#347355] font-semibold flex items-center justify-between">
-                            <span>ABDM Linked</span>
-                            <Check className="w-3.5 h-3.5 text-[#347355]" />
-                          </div>
-                        </div>
-                      ))}
-
-                      {selectedPatient.familyTree.length === 0 && (
-                        <div className="col-span-full p-6 text-center text-[#587366] text-xs">
-                          No linked family members recorded for this patient file yet.
                         </div>
                       )}
+
+                      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3.5 pt-2">
+                        {selectedPatient.familyTree.map((member) => (
+                          <div
+                            key={member.id}
+                            className="p-4 rounded-xl bg-[#f0fff4] border border-[#003d29]/15 flex flex-col justify-between"
+                          >
+                            <div>
+                              <div className="flex items-center justify-between">
+                                <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-white text-[#347355] border border-[#003d29]/10">
+                                  {member.relation}
+                                </span>
+                                <span className="text-[10px] font-semibold text-[#587366]">
+                                  Blood: {member.bloodGroup}
+                                </span>
+                              </div>
+                              <strong className="block text-sm font-bold text-[#003d29] mt-2">
+                                {member.name}
+                              </strong>
+                              <span className="block text-xs text-[#587366] mt-0.5">
+                                {member.age} years · Linked ABHA
+                              </span>
+
+                              <div className="mt-2.5 flex flex-wrap gap-1">
+                                {member.conditions.map((cond, idx) => (
+                                  <span
+                                    key={idx}
+                                    className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-white text-[#003d29] border border-[#003d29]/10"
+                                  >
+                                    {cond}
+                                  </span>
+                                ))}
+                              </div>
+                            </div>
+                            <div className="mt-3 pt-2 border-t border-[#003d29]/10 text-[10px] text-[#347355] font-semibold flex items-center justify-between">
+                              <span>ABDM Linked</span>
+                              <Check className="w-3.5 h-3.5 text-[#347355]" />
+                            </div>
+                          </div>
+                        ))}
+
+                        {selectedPatient.familyTree.length === 0 && (
+                          <div className="col-span-full p-6 text-center text-[#587366] text-xs">
+                            No linked family members recorded for this patient file yet.
+                          </div>
+                        )}
+                      </div>
                     </div>
-                  </div>
+                  )
                 )}
               </div>
-            )}
+            );
+          })()}
 
             {/* -------------------- VIEW 4: SETTINGS -------------------- */}
             {activeNav === "settings" && !selectedPatient && (

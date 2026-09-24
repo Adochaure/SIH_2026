@@ -37,9 +37,14 @@ export const CaseIntake: React.FC<CaseIntakeProps> = ({
   onClose,
   onComplete,
 }) => {
-  // Step in Intake flow: 1: Pathway, 2: Complaint, 3: Adaptive Questions, 4: Summary Confirmation
-  const [step, setStep] = useState<"pathway" | "complaint" | "questions" | "summary">("pathway");
+  // Step in Intake flow: 1: Pathway, 2: Complaint, 3: Data Sharing Consent, 4: Adaptive Questions, 5: Summary Confirmation
+  const [step, setStep] = useState<"pathway" | "complaint" | "data-sharing-consent" | "questions" | "summary">("pathway");
   const [pathway, setPathway] = useState<"allopathy" | "ayush">("allopathy");
+
+  // ABDM Data Sharing Consent State before Intake Questions
+  const [consentShareSummary, setConsentShareSummary] = useState(true);
+  const [consentShareDocs, setConsentShareDocs] = useState(true);
+  const [consentShareHistory, setConsentShareHistory] = useState(true);
 
   // Complaint & Speech-to-text
   const [complaint, setComplaint] = useState("");
@@ -230,6 +235,10 @@ export const CaseIntake: React.FC<CaseIntakeProps> = ({
 
   const handleStartQuestions = () => {
     if (!complaint.trim()) return;
+    setStep("data-sharing-consent");
+  };
+
+  const handleConfirmConsentAndStart = () => {
     setStep("questions");
     fetchQuestion(0, []);
   };
@@ -723,14 +732,149 @@ export const CaseIntake: React.FC<CaseIntakeProps> = ({
                   disabled={!complaint.trim()}
                   className="px-6 py-2.5 rounded-xl bg-[#003d29] text-[#f0fff4] text-xs sm:text-sm font-bold flex items-center gap-2 hover:bg-[#002b1d] transition-all cursor-pointer shadow-md shadow-[#003d29]/20 disabled:opacity-50"
                 >
-                  <span>Begin Adaptive Questions</span>
+                  <span>Continue to ABDM Data Sharing Authorization</span>
                   <ArrowRight className="w-4 h-4" />
                 </button>
               </div>
             </div>
           )}
 
-          {/* STEP 3: ADAPTIVE QUESTIONING */}
+          {/* STEP 3: MANDATORY ABDM DATA SHARING CONSENT */}
+          {step === "data-sharing-consent" && (
+            <div className="space-y-6 animate-fade-in">
+              <div className="flex items-center justify-between">
+                <div>
+                  <span className="text-[11px] uppercase tracking-wider font-bold text-[#347355] bg-[#c9fdd7] px-2.5 py-0.5 rounded-full border border-[#003d29]/15">
+                    Step 3 of 5 · ABDM Privacy & Data Sharing Authorization
+                  </span>
+                  <h3 className="text-xl sm:text-2xl font-bold text-[#003d29] mt-2">
+                    Authorize Data Sharing for Attending Doctor
+                  </h3>
+                  <p className="text-xs text-[#587366] mt-0.5">
+                    In compliance with ABDM health privacy rules, confirm the clinical records you permit Carelink to share with {assignedDoctor ? assignedDoctor.name : "the attending physician"} for this encounter.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setStep("complaint")}
+                  className="text-xs text-[#587366] hover:text-[#003d29] flex items-center gap-1 cursor-pointer"
+                >
+                  <ArrowLeft className="w-3.5 h-3.5" />
+                  <span>Back to symptoms</span>
+                </button>
+              </div>
+
+              {/* ABDM Data Sharing Consent Card */}
+              <div className="p-5 bg-[#f0fff4] border-2 border-[#003d29]/20 rounded-2xl space-y-4">
+                <div className="flex items-center gap-3 pb-3 border-b border-[#003d29]/15">
+                  <div className="p-2 rounded-xl bg-[#c9fdd7] text-[#003d29]">
+                    <ShieldCheck className="w-6 h-6 stroke-[2.2]" />
+                  </div>
+                  <div>
+                    <h4 className="font-bold text-[#003d29] text-sm sm:text-base">
+                      Encounter Data Sharing Authorization
+                    </h4>
+                    <p className="text-[11px] text-[#587366]">
+                      ABDM Health ID: <strong className="font-mono text-[#003d29]">12-3456-7890-1234</strong>
+                    </p>
+                  </div>
+                </div>
+
+                <div className="space-y-3">
+                  {/* Toggle 1: Chief Complaint & AI Intake Transcript */}
+                  <label className="flex items-start justify-between gap-3 p-3 rounded-xl bg-white border border-[#003d29]/10 cursor-pointer hover:border-[#347355] transition-colors">
+                    <div className="flex items-start gap-2.5">
+                      <FileText className="w-4 h-4 text-[#347355] shrink-0 mt-0.5" />
+                      <div>
+                        <strong className="block text-xs font-bold text-[#003d29]">
+                          Share Chief Complaint & AI Intake Transcript
+                        </strong>
+                        <span className="text-[11px] text-[#587366] block">
+                          Allows attending physician to review your reported symptoms (&ldquo;{complaint.slice(0, 45)}...&rdquo;) and AI adaptive Q&A transcript.
+                        </span>
+                      </div>
+                    </div>
+                    <input
+                      type="checkbox"
+                      checked={consentShareSummary}
+                      onChange={(e) => setConsentShareSummary(e.target.checked)}
+                      className="w-4 h-4 mt-1 accent-[#003d29] cursor-pointer"
+                    />
+                  </label>
+
+                  {/* Toggle 2: Attached Test Reports & OCR Transcripts */}
+                  <label className="flex items-start justify-between gap-3 p-3 rounded-xl bg-white border border-[#003d29]/10 cursor-pointer hover:border-[#347355] transition-colors">
+                    <div className="flex items-start gap-2.5">
+                      <FileCheck className="w-4 h-4 text-[#347355] shrink-0 mt-0.5" />
+                      <div>
+                        <strong className="block text-xs font-bold text-[#003d29]">
+                          Share Attached Lab Reports & OCR Prescriptions ({attachedDocs.length} attached)
+                        </strong>
+                        <span className="text-[11px] text-[#587366] block">
+                          Permits doctor to view uploaded medical reports and extracted Tesseract OCR transcripts.
+                        </span>
+                      </div>
+                    </div>
+                    <input
+                      type="checkbox"
+                      checked={consentShareDocs}
+                      onChange={(e) => setConsentShareDocs(e.target.checked)}
+                      className="w-4 h-4 mt-1 accent-[#003d29] cursor-pointer"
+                    />
+                  </label>
+
+                  {/* Toggle 3: ABDM Past Medical History & Timeline */}
+                  <label className="flex items-start justify-between gap-3 p-3 rounded-xl bg-white border border-[#003d29]/10 cursor-pointer hover:border-[#347355] transition-colors">
+                    <div className="flex items-start gap-2.5">
+                      <Clock className="w-4 h-4 text-[#347355] shrink-0 mt-0.5" />
+                      <div>
+                        <strong className="block text-xs font-bold text-[#003d29]">
+                          Share Past ABDM Health Journey & Encounters
+                        </strong>
+                        <span className="text-[11px] text-[#587366] block">
+                          Enables longitudinal health review across past clinical visits linked to your ABHA health vault.
+                        </span>
+                      </div>
+                    </div>
+                    <input
+                      type="checkbox"
+                      checked={consentShareHistory}
+                      onChange={(e) => setConsentShareHistory(e.target.checked)}
+                      className="w-4 h-4 mt-1 accent-[#003d29] cursor-pointer"
+                    />
+                  </label>
+                </div>
+
+                <div className="p-3 rounded-xl bg-[#c9fdd7]/50 border border-[#347355]/20 text-[11px] text-[#003d29] flex items-center gap-2">
+                  <ShieldCheck className="w-4 h-4 text-[#347355] shrink-0" />
+                  <span>
+                    <strong>ABDM Privacy Security Notice:</strong> Data authorization is encounter-bound. Access to patient records automatically revokes once consultation is completed.
+                  </span>
+                </div>
+              </div>
+
+              {/* Action Buttons */}
+              <div className="flex items-center justify-between pt-4 border-t border-[#003d29]/10">
+                <button
+                  type="button"
+                  onClick={() => setStep("complaint")}
+                  className="px-4 py-2 rounded-xl text-xs font-bold text-[#587366] hover:text-[#003d29] cursor-pointer"
+                >
+                  Back
+                </button>
+                <button
+                  type="button"
+                  onClick={handleConfirmConsentAndStart}
+                  className="px-6 py-2.5 rounded-xl bg-[#003d29] text-[#f0fff4] text-xs sm:text-sm font-bold flex items-center gap-2 hover:bg-[#002b1d] transition-all cursor-pointer shadow-md shadow-[#003d29]/20"
+                >
+                  <span>Authorize & Begin AI Intake Questions</span>
+                  <ArrowRight className="w-4 h-4" />
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* STEP 4: ADAPTIVE QUESTIONING */}
           {step === "questions" && (
             <div className="space-y-6">
               {/* Progress Header */}

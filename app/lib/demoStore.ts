@@ -103,6 +103,8 @@ export interface PatientProfile {
   allergies: string[];
   medicalHistory: string[];
   timeline: TimelineRecord[];
+  address?: string;
+  coordinates?: { lat: number; lng: number };
 }
 
 export interface DoctorProfile {
@@ -115,6 +117,14 @@ export interface DoctorProfile {
   qrCodeToken: string;
   experience: string;
   qualifications: string;
+  address?: string;
+  coordinates?: { lat: number; lng: number };
+  distanceKm?: string;
+  rating?: number;
+  reviewCount?: number;
+  currentPatientCount?: number;
+  category?: "general" | "cardiology" | "ayush" | "pediatrics" | "orthopedics" | "dermatology";
+  avatarColor?: string;
 }
 
 const STORAGE_KEY_PATIENT = "carelink_demo_patient_v2";
@@ -133,18 +143,28 @@ export const DEFAULT_PATIENT: PatientProfile = {
   allergies: [],
   medicalHistory: [],
   timeline: [], // Initially empty as required
+  address: "Shivajinagar, Pune, Maharashtra 411005",
+  coordinates: { lat: 18.5308, lng: 73.8474 },
 };
 
 export const DEFAULT_DOCTOR: DoctorProfile = {
   id: "DOC-ANANYA-AK",
   name: "Dr. Ananya Kulkarni",
-  specialty: "General Physician",
+  specialty: "General Physician & Internal Medicine",
   hospital: "DemoCare Hospital",
   department: "General Medicine & Primary Care",
-  roomNumber: "OPD Room 3",
+  roomNumber: "Room 3 (General OPD)",
   qrCodeToken: "OPD-DEMOCARE-3",
   experience: "12 Years",
   qualifications: "MBBS, MD (Internal Medicine)",
+  address: "DemoCare Hospital, Shivajinagar, Pune",
+  coordinates: { lat: 18.5320, lng: 73.8490 },
+  distanceKm: "1.2 km",
+  rating: 4.9,
+  reviewCount: 142,
+  currentPatientCount: 3,
+  category: "general",
+  avatarColor: "#003d29",
 };
 
 export const KNOWN_DOCTORS: DoctorProfile[] = [
@@ -152,24 +172,97 @@ export const KNOWN_DOCTORS: DoctorProfile[] = [
   {
     id: "DOC-RAJESH-RR",
     name: "Dr. Rajesh Rao",
-    specialty: "Senior Consultant Physician",
-    hospital: "Carelink Central OPD",
-    department: "Pulmonology & Internal Medicine",
-    roomNumber: "OPD Room 4",
+    specialty: "Senior Pulmonologist & Internal Medicine",
+    hospital: "Carelink Central Hospital",
+    department: "Pulmonology & Respiratory Care",
+    roomNumber: "Suite 402",
     qrCodeToken: "DOC-OPD4-RR-4821",
     experience: "16 Years",
     qualifications: "MBBS, MD, FCCP",
+    address: "FC Road, Shivajinagar, Pune",
+    coordinates: { lat: 18.5204, lng: 73.8567 },
+    distanceKm: "2.4 km",
+    rating: 4.8,
+    reviewCount: 98,
+    currentPatientCount: 5,
+    category: "general",
+    avatarColor: "#1e3a8a",
   },
   {
     id: "DOC-MEERA-MN",
     name: "Dr. Meera Nambiar",
-    specialty: "Holistic Health Specialist",
-    hospital: "Carelink Holistic Center",
-    department: "AYUSH & Integrative Wellness",
-    roomNumber: "OPD Room 1",
+    specialty: "Ayurvedic Physician & Holistic Specialist",
+    hospital: "Carelink Holistic Wellness Center",
+    department: "AYUSH & Integrative Medicine",
+    roomNumber: "Holistic Suite 1",
     qrCodeToken: "AYUSH-HOLISTIC-1",
     experience: "10 Years",
     qualifications: "BAMS, MD (Ayurveda)",
+    address: "Koregaon Park, Pune",
+    coordinates: { lat: 18.5362, lng: 73.8940 },
+    distanceKm: "3.8 km",
+    rating: 4.9,
+    reviewCount: 176,
+    currentPatientCount: 1,
+    category: "ayush",
+    avatarColor: "#047857",
+  },
+  {
+    id: "DOC-VIKRAM-VS",
+    name: "Dr. Vikram Sharma",
+    specialty: "Senior Cardiologist & Interventionalist",
+    hospital: "Apex Heart & Vascular Institute",
+    department: "Cardiology",
+    roomNumber: "Cardiac Block 2B",
+    qrCodeToken: "DOC-CARDIOLOGY-VS99",
+    experience: "18 Years",
+    qualifications: "MBBS, MD, DM (Cardiology)",
+    address: "JM Road, Deccan Gymkhana, Pune",
+    coordinates: { lat: 18.5167, lng: 73.8412 },
+    distanceKm: "1.9 km",
+    rating: 5.0,
+    reviewCount: 215,
+    currentPatientCount: 2,
+    category: "cardiology",
+    avatarColor: "#b91c1c",
+  },
+  {
+    id: "DOC-SUNITA-SP",
+    name: "Dr. Sunita Patil",
+    specialty: "Pediatrician & Child Health Specialist",
+    hospital: "Little Angels Children Hospital",
+    department: "Pediatrics & Neonatology",
+    roomNumber: "Pediatric Clinic 1",
+    qrCodeToken: "DOC-PEDIATRIC-SP12",
+    experience: "14 Years",
+    qualifications: "MBBS, DCH, MD (Pediatrics)",
+    address: "Model Colony, Shivajinagar, Pune",
+    coordinates: { lat: 18.5385, lng: 73.8390 },
+    distanceKm: "2.1 km",
+    rating: 4.9,
+    reviewCount: 130,
+    currentPatientCount: 4,
+    category: "pediatrics",
+    avatarColor: "#7c3aed",
+  },
+  {
+    id: "DOC-AMIT-AJ",
+    name: "Dr. Amit Joshi",
+    specialty: "Orthopedic Surgeon & Joint Specialist",
+    hospital: "Carelink Bone & Joint Hospital",
+    department: "Orthopedics & Sports Medicine",
+    roomNumber: "Ortho Suite 305",
+    qrCodeToken: "DOC-ORTHO-AJ77",
+    experience: "15 Years",
+    qualifications: "MBBS, MS (Orthopedics), DNB",
+    address: "Aundh Road, Pune",
+    coordinates: { lat: 18.5602, lng: 73.8077 },
+    distanceKm: "4.5 km",
+    rating: 4.7,
+    reviewCount: 112,
+    currentPatientCount: 2,
+    category: "orthopedics",
+    avatarColor: "#d97706",
   },
 ];
 

@@ -28,6 +28,11 @@ import {
   Send,
   Video,
   Upload,
+  MapPin,
+  Star,
+  Map,
+  Filter,
+  Navigation,
 } from "lucide-react";
 import { Navbar } from "./Navbar";
 import {
@@ -212,6 +217,24 @@ export const PatientDashboard: React.FC<PatientDashboardProps> = ({
   const videoRef = useRef<HTMLVideoElement>(null);
   const scanCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const scanFrameIdRef = useRef<number | null>(null);
+
+  // Nearby Doctors & OPD Interactive Map state
+  const [selectedMapSpecialty, setSelectedMapSpecialty] = useState<string>("All");
+  const [selectedMapDoctor, setSelectedMapDoctor] = useState<DoctorProfile | null>(
+    KNOWN_DOCTORS[0] || null
+  );
+  const [isGpsLocating, setIsGpsLocating] = useState<boolean>(false);
+  const [gpsAddress, setGpsAddress] = useState<string>(
+    "Shivajinagar, Pune 411005 (18.5308° N, 73.8474° E)"
+  );
+
+  const handleSimulateGpsLocate = () => {
+    setIsGpsLocating(true);
+    setTimeout(() => {
+      setIsGpsLocating(false);
+      setGpsAddress("📍 GPS Locked: Deccan Gymkhana, Pune (18.5167° N, 73.8415° E)");
+    }, 1200);
+  };
 
   // Audio confirmation beep on QR detection
   const playSuccessBeep = () => {
@@ -899,6 +922,285 @@ export const PatientDashboard: React.FC<PatientDashboardProps> = ({
                   <ChevronRight className="w-3 h-3 group-hover:translate-x-0.5 transition-transform" />
                 </span>
               </button>
+            </section>
+
+            {/* 📍 Nearby Doctors & OPD Interactive Map (Patient Side) */}
+            <section
+              aria-label="Nearby Doctors Map"
+              className="p-5 sm:p-6 bg-white border border-[#003d29]/15 rounded-2xl space-y-5 shadow-xs animate-fade-in"
+            >
+              {/* Header Bar with Location & GPS Button */}
+              <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-4 border-b border-[#003d29]/10">
+                <div>
+                  <div className="flex items-center gap-2">
+                    <MapPin className="w-5 h-5 text-[#347355]" />
+                    <h2 className="text-base sm:text-lg font-bold text-[#003d29]">
+                      Nearby Doctors & OPD Clinics Map
+                    </h2>
+                    <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-[#c9fdd7] text-[#003d29] border border-[#003d29]/15">
+                      Live Queue GPS
+                    </span>
+                  </div>
+                  <p className="text-xs text-[#587366] mt-1 flex items-center gap-1.5 flex-wrap">
+                    <span>{gpsAddress}</span>
+                  </p>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={handleSimulateGpsLocate}
+                    disabled={isGpsLocating}
+                    className="px-3.5 py-2 rounded-xl bg-[#f0fff4] hover:bg-[#c9fdd7] border border-[#003d29]/20 text-[#003d29] text-xs font-bold transition-all flex items-center gap-2 cursor-pointer shadow-xs disabled:opacity-50"
+                  >
+                    {isGpsLocating ? (
+                      <>
+                        <Loader2 className="w-3.5 h-3.5 animate-spin text-[#347355]" />
+                        <span>Locating...</span>
+                      </>
+                    ) : (
+                      <>
+                        <Navigation className="w-3.5 h-3.5 text-[#347355]" />
+                        <span>📍 Use GPS Location</span>
+                      </>
+                    )}
+                  </button>
+                </div>
+              </div>
+
+              {/* Specialty Filter Buttons */}
+              <div className="flex items-center gap-2 overflow-x-auto pb-1 scrollbar-none">
+                <span className="text-xs font-bold text-[#587366] flex items-center gap-1 shrink-0">
+                  <Filter className="w-3.5 h-3.5" /> Specialty Filter:
+                </span>
+                {[
+                  { id: "All", label: `All Doctors (${KNOWN_DOCTORS.length})` },
+                  { id: "general", label: "General Medicine" },
+                  { id: "cardiology", label: "Cardiology" },
+                  { id: "ayush", label: "AYUSH & Integrative" },
+                  { id: "pediatrics", label: "Pediatrics" },
+                  { id: "orthopedics", label: "Orthopedics" },
+                ].map((spec) => (
+                  <button
+                    key={spec.id}
+                    type="button"
+                    onClick={() => setSelectedMapSpecialty(spec.id)}
+                    className={`px-3 py-1.5 rounded-full text-xs font-bold transition-all shrink-0 cursor-pointer ${
+                      selectedMapSpecialty === spec.id
+                        ? "bg-[#003d29] text-white shadow-xs"
+                        : "bg-[#f0fff4] text-[#003d29] border border-[#003d29]/15 hover:bg-[#c9fdd7]"
+                    }`}
+                  >
+                    {spec.label}
+                  </button>
+                ))}
+              </div>
+
+              {/* Interactive Visual Map Canvas Grid & Side Drawer */}
+              <div className="grid grid-cols-1 lg:grid-cols-3 gap-5 items-stretch">
+                {/* Visual Map Box (2 columns on LG) */}
+                <div className="lg:col-span-2 relative min-h-[340px] sm:min-h-[400px] rounded-2xl bg-[#e5f5ea] border border-[#003d29]/20 overflow-hidden shadow-inner flex flex-col justify-between p-4 select-none">
+                  {/* Map Graphic Overlay Background (Stylized roads & radius rings) */}
+                  <div className="absolute inset-0 pointer-events-none opacity-40">
+                    <svg className="w-full h-full" xmlns="http://www.w3.org/2000/svg">
+                      <defs>
+                        <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse">
+                          <path d="M 40 0 L 0 0 0 40" fill="none" stroke="#347355" strokeWidth="0.5" strokeDasharray="3,3" opacity="0.3" />
+                        </pattern>
+                      </defs>
+                      <rect width="100%" height="100%" fill="url(#grid)" />
+                      {/* Radius Circles around center patient */}
+                      <circle cx="50%" cy="50%" r="22%" fill="none" stroke="#003d29" strokeWidth="1.5" strokeDasharray="4 4" opacity="0.25" />
+                      <circle cx="50%" cy="50%" r="40%" fill="none" stroke="#003d29" strokeWidth="1.5" strokeDasharray="4 4" opacity="0.15" />
+                      {/* Stylized road paths */}
+                      <path d="M 0 200 Q 250 150 500 250 T 1000 200" fill="none" stroke="#ffffff" strokeWidth="12" />
+                      <path d="M 250 0 Q 300 250 250 500" fill="none" stroke="#ffffff" strokeWidth="10" />
+                      <path d="M 0 200 Q 250 150 500 250 T 1000 200" fill="none" stroke="#a3e635" strokeWidth="4" opacity="0.7" />
+                    </svg>
+                  </div>
+
+                  {/* Radius Legend Badge top left */}
+                  <div className="relative z-10 flex items-center justify-between w-full pointer-events-none">
+                    <div className="px-3 py-1 rounded-xl bg-white/90 backdrop-blur-xs border border-[#003d29]/15 text-[11px] font-semibold text-[#003d29] shadow-xs">
+                      📍 Pune Health Zone Map · 5km Radius
+                    </div>
+                    <div className="px-2.5 py-1 rounded-xl bg-emerald-900/80 text-white text-[10px] font-bold">
+                      {KNOWN_DOCTORS.filter(d => selectedMapSpecialty === "All" || d.category === selectedMapSpecialty).length} Doctors Pinpointed
+                    </div>
+                  </div>
+
+                  {/* Center Patient Location Pin */}
+                  <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-10 flex flex-col items-center">
+                    <div className="relative flex items-center justify-center">
+                      <span className="absolute w-10 h-10 rounded-full bg-[#347355]/30 animate-ping" />
+                      <div className="w-8 h-8 rounded-full bg-[#003d29] border-2 border-white text-white flex items-center justify-center shadow-lg font-bold text-xs">
+                        You
+                      </div>
+                    </div>
+                    <span className="mt-1 px-2 py-0.5 rounded-md bg-[#003d29] text-[#c9fdd7] text-[10px] font-bold shadow-xs whitespace-nowrap">
+                      📍 Shriram (Patient)
+                    </span>
+                  </div>
+
+                  {/* Doctor Profile Pins mapped around canvas */}
+                  {KNOWN_DOCTORS.map((doc, idx) => {
+                    const isFilteredOut = selectedMapSpecialty !== "All" && doc.category !== selectedMapSpecialty;
+                    if (isFilteredOut) return null;
+
+                    const isSelected = selectedMapDoctor?.id === doc.id;
+
+                    const mapPositions = [
+                      { top: '28%', left: '32%' }, // Dr. Ananya (1.2 km)
+                      { top: '22%', left: '72%' }, // Dr. Rajesh (2.4 km)
+                      { top: '70%', left: '26%' }, // Dr. Meera (3.8 km)
+                      { top: '65%', left: '75%' }, // Dr. Vikram (1.9 km)
+                      { top: '78%', left: '48%' }, // Dr. Sunita (2.1 km)
+                      { top: '18%', left: '48%' }, // Dr. Amit (4.5 km)
+                    ];
+                    const pos = mapPositions[idx % mapPositions.length];
+
+                    return (
+                      <div
+                        key={doc.id}
+                        onClick={() => setSelectedMapDoctor(doc)}
+                        style={{ top: pos.top, left: pos.left }}
+                        className={`absolute -translate-x-1/2 -translate-y-1/2 z-20 cursor-pointer group transition-all duration-300 ${
+                          isSelected ? "scale-110 z-30" : "hover:scale-105"
+                        }`}
+                      >
+                        {/* Circular Doctor Avatar Pin */}
+                        <div className="relative flex flex-col items-center">
+                          {/* Selected Glow Ring */}
+                          {isSelected && (
+                            <span className="absolute -inset-2 rounded-full bg-[#347355]/40 animate-pulse ring-2 ring-[#003d29]" />
+                          )}
+
+                          <div
+                            style={{ backgroundColor: doc.avatarColor || '#003d29' }}
+                            className={`w-11 h-11 rounded-full border-2 ${
+                              isSelected ? 'border-amber-400 ring-4 ring-[#003d29]/30' : 'border-white'
+                            } text-white font-bold flex items-center justify-center text-xs shadow-md transition-all group-hover:shadow-xl`}
+                          >
+                            {doc.name.split(" ").slice(-1)[0][0]}
+                          </div>
+
+                          {/* Live Queue Badge Overlay */}
+                          <span className="absolute -bottom-1 -right-1 px-1.5 py-0.5 rounded-full bg-amber-400 text-[#003d29] text-[9px] font-extrabold border border-white shadow-xs">
+                            {doc.currentPatientCount || 2} Wait
+                          </span>
+
+                          {/* Rating Badge Top Left */}
+                          <span className="absolute -top-1 -left-1 px-1 py-0.5 rounded-md bg-white text-[#003d29] text-[9px] font-bold border border-[#003d29]/15 shadow-xs flex items-center gap-0.5">
+                            <Star className="w-2.5 h-2.5 fill-amber-400 text-amber-500" />
+                            {doc.rating || 4.9}
+                          </span>
+
+                          {/* Label Pill */}
+                          <div className={`mt-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold shadow-md whitespace-nowrap transition-colors ${
+                            isSelected ? "bg-[#003d29] text-white" : "bg-white text-[#003d29] border border-[#003d29]/20"
+                          }`}>
+                            {doc.name.split(" ")[1]} · {doc.distanceKm}
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+
+                  {/* Map Controls Bottom Right */}
+                  <div className="relative z-10 self-end flex items-center gap-1.5 pointer-events-none">
+                    <span className="px-2.5 py-1 rounded-lg bg-white/90 text-[#003d29] text-[10px] font-bold border border-[#003d29]/15 shadow-xs">
+                      Click doctor pin to inspect profile
+                    </span>
+                  </div>
+                </div>
+
+                {/* Selected Doctor Drawer / Card (1 column on LG) */}
+                {selectedMapDoctor && (
+                  <div className="p-5 rounded-2xl bg-[#f0fff4] border border-[#003d29]/20 shadow-xs flex flex-col justify-between space-y-4 animate-fade-in">
+                    <div>
+                      <div className="flex items-start justify-between gap-3 pb-3 border-b border-[#003d29]/15">
+                        <div className="flex items-center gap-3">
+                          <div
+                            style={{ backgroundColor: selectedMapDoctor.avatarColor || '#003d29' }}
+                            className="w-12 h-12 rounded-2xl text-white font-bold text-base flex items-center justify-center shadow-sm"
+                          >
+                            {selectedMapDoctor.name.split(" ").slice(-1)[0][0]}
+                          </div>
+                          <div>
+                            <h3 className="text-sm sm:text-base font-bold text-[#003d29]">
+                              {selectedMapDoctor.name}
+                            </h3>
+                            <span className="text-xs text-[#347355] font-semibold block">
+                              {selectedMapDoctor.specialty}
+                            </span>
+                            <span className="text-[11px] text-[#587366] block">
+                              {selectedMapDoctor.experience} · {selectedMapDoctor.qualifications}
+                            </span>
+                          </div>
+                        </div>
+                        <div className="flex flex-col items-end">
+                          <span className="px-2 py-0.5 rounded-lg bg-amber-400/30 text-[#003d29] text-xs font-bold flex items-center gap-1">
+                            <Star className="w-3.5 h-3.5 fill-amber-500 text-amber-600" />
+                            {selectedMapDoctor.rating || 4.9}
+                          </span>
+                          <span className="text-[10px] text-[#587366] mt-0.5">
+                            ({selectedMapDoctor.reviewCount || 100} reviews)
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Details List */}
+                      <div className="mt-3 space-y-2 text-xs">
+                        <div className="flex items-center justify-between p-2 rounded-xl bg-white border border-[#003d29]/10">
+                          <span className="text-[#587366] font-medium flex items-center gap-1.5">
+                            <MapPin className="w-3.5 h-3.5 text-[#347355]" /> Distance from you:
+                          </span>
+                          <strong className="text-[#003d29] font-bold">{selectedMapDoctor.distanceKm || "1.2 km"} away</strong>
+                        </div>
+
+                        <div className="flex items-center justify-between p-2 rounded-xl bg-white border border-[#003d29]/10">
+                          <span className="text-[#587366] font-medium flex items-center gap-1.5">
+                            <Users className="w-3.5 h-3.5 text-[#347355]" /> Live Patient Queue:
+                          </span>
+                          <strong className="text-[#003d29] font-bold">
+                            {selectedMapDoctor.currentPatientCount || 3} Patients Waiting
+                          </strong>
+                        </div>
+
+                        <div className="flex items-center justify-between p-2 rounded-xl bg-white border border-[#003d29]/10">
+                          <span className="text-[#587366] font-medium flex items-center gap-1.5">
+                            <Stethoscope className="w-3.5 h-3.5 text-[#347355]" /> Room / Clinic:
+                          </span>
+                          <strong className="text-[#003d29] font-bold truncate max-w-[150px]">
+                            {selectedMapDoctor.roomNumber} ({selectedMapDoctor.hospital})
+                          </strong>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Actions */}
+                    <div className="pt-3 border-t border-[#003d29]/15 space-y-2">
+                      <button
+                        type="button"
+                        onClick={() => handleStartNewCaseForScannedDoctor(selectedMapDoctor)}
+                        className="w-full py-2.5 px-4 bg-[#003d29] hover:bg-[#347355] text-white text-xs font-bold rounded-xl transition-all shadow-xs cursor-pointer flex items-center justify-center gap-2"
+                      >
+                        <Plus className="w-4 h-4 text-[#c9fdd7]" />
+                        <span>Start Consultation with {selectedMapDoctor.name.split(" ")[1]}</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={handleOpenScanner}
+                        className="w-full py-2 px-4 bg-white hover:bg-[#c9fdd7] border border-[#003d29]/20 text-[#003d29] text-xs font-bold rounded-xl transition-all cursor-pointer flex items-center justify-center gap-2"
+                      >
+                        <QrCode className="w-3.5 h-3.5 text-[#347355]" />
+                        <span>Scan Desk QR Code Check-in</span>
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
             </section>
 
             {/* My Consultation Cases Section */}
